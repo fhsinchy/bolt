@@ -239,7 +239,7 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		"active_count":    active,
 		"queued_count":    queued,
 		"completed_count": completed,
-		"version":         "0.2.0-dev",
+		"version":         "0.3.0-dev",
 	})
 }
 

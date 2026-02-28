@@ -10,11 +10,15 @@ Fast, segmented download manager built with Go. See `bolt-prd.md` and `bolt-trd.
 - **SQLite driver:** `modernc.org/sqlite` (pure Go, no CGO)
 - **ULID library:** `github.com/oklog/ulid/v2`
 - **WebSocket:** `nhooyr.io/websocket`
+- **Wails:** `github.com/wailsapp/wails/v2` (desktop GUI)
+- **System tray:** `github.com/energye/systray`
+- **Frontend:** Svelte 5, TypeScript 5, Vite 6, Tailwind CSS 4, pnpm
 - **Test framework:** stdlib `testing` + `net/http/httptest` (no external test deps)
 
 ## TRD Errata
 
 - TRD §3.1 says `github.com/farhanishmam/bolt` — this is wrong. The correct module path is `github.com/fhsinchy/bolt`.
+- TRD §13.4 says Wails v2 has native `options.SystemTray` — this is incorrect. Wails v2 has no system tray API. We use `energye/systray` instead.
 
 ## Development Phases
 
@@ -49,8 +53,22 @@ HTTP server with REST API and WebSocket. CLI refactored to HTTP client. PID file
 - Step 6: CLI refactored to HTTP client — `internal/cli/`
 - Step 7: Entry point with daemon/client modes — `cmd/bolt/main.go`
 
-### Phase 3: Wails GUI + Svelte Frontend (NOT STARTED)
-Desktop app with system tray, Wails v2 bindings.
+### Phase 3: Wails GUI + Svelte Frontend (COMPLETE)
+Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
+
+**Exit criteria (met):** Fully functional desktop app that can manage downloads with core controls, no CLI needed.
+
+**What was built:**
+- Step 0: Prerequisites — Wails CLI, GTK3/WebKit system deps
+- Step 1: Wails project scaffolding — `wails.json`, `frontend/`, `build/appicon.png`
+- Step 2: Go app bindings (IPC methods) — `internal/app/app.go`
+- Step 3: Entry point refactored for GUI mode — `cmd/bolt/gui.go`, `cmd/bolt/main.go`
+- Step 4: Frontend foundation — types, utils, reactive state, layout shell
+- Step 5: Download list UI — `DownloadList`, `DownloadRow`, `ProgressBar`, `ActionButtons`
+- Step 6: Toolbar + SearchBar + StatusBar
+- Step 7: Add download dialog with URL probing
+- Step 8: Settings dialog with config persistence
+- Step 9: System tray via `energye/systray` — `internal/tray/`
 
 ### Phase 4: Browser Extension (NOT STARTED)
 Manifest V3 extension for download capture.
@@ -61,21 +79,55 @@ Manifest V3 extension for download capture.
 
 **Phase 2:** CLI is now an HTTP client. The daemon (`bolt start`) runs the engine + HTTP server. CLI commands (`bolt add`, `bolt list`, etc.) talk to the daemon via REST API. Real-time progress uses WebSocket. The engine interface stayed identical — only the calling layer changed.
 
+**Phase 3:** GUI mode is now the default. `bolt` (no args) and `bolt start` launch the GUI. `bolt start --headless` runs the headless daemon (Phase 2 behavior). Both modes start the HTTP server for CLI/extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread.
+
 ## Commands
 
 ```
-make build       # produces ./bolt binary
-make test        # run all tests
+make build       # frontend build + Go build with Wails tags → ./bolt
+make build-gui   # full Wails build (same result, uses wails CLI)
+make dev         # wails dev (hot-reload)
+make test        # run all tests (no Wails tags needed for tests)
 make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make clean       # remove binary, clear test cache
 ```
 
+## Build Tags
+
+Wails requires `desktop,production` build tags for release builds. On systems with webkit2gtk-4.1 (Fedora 39+, Ubuntu 24.04+), also add `webkit2_41`. The Makefile handles this automatically. CGO must be enabled (`CGO_ENABLED=1`) for the Wails/WebKit bindings.
+
+Tests do not require Wails build tags — `go test ./...` works without them.
+
 ## Architecture
 
 ```
-cmd/bolt/main.go          Entry point (daemon mode + CLI client dispatch)
+cmd/bolt/
+  main.go                  Entry point (GUI/headless/CLI dispatch)
+  gui.go                   launchGUI() + Wails window + tray setup
+embed.go                   //go:embed frontend/dist
+wails.json                 Wails project config
+frontend/                  Svelte 5 + TypeScript + Vite + Tailwind
+  src/
+    App.svelte             Root layout (Toolbar + Search + List + StatusBar)
+    lib/
+      types.ts             TypeScript interfaces mirroring Go models
+      utils/format.ts      Formatting (bytes, speed, ETA, dates)
+      state/
+        downloads.svelte.ts  Reactive download state + event listeners
+        config.svelte.ts     Config state (load/save)
+      components/
+        Toolbar.svelte       Add, Pause All, Resume All, Clear, Settings
+        SearchBar.svelte     Client-side filter
+        DownloadList.svelte  Scrollable download list
+        DownloadRow.svelte   Single download with progress + actions
+        ProgressBar.svelte   Progress bar (determinate + indeterminate)
+        ActionButtons.svelte Per-download context actions
+        AddDownloadDialog.svelte  URL probe + download creation
+        SettingsDialog.svelte     Config editor
+        StatusBar.svelte     Active/queued counts + total speed
 internal/
+  app/                     Wails app bindings (IPC methods)
   model/                   Shared types, ID generation, formatting
   config/                  config.json management
   db/                      SQLite data access layer
@@ -85,5 +137,6 @@ internal/
   server/                  HTTP server (REST API + WebSocket)
   cli/                     CLI HTTP client
   pid/                     PID file management
+  tray/                    System tray (energye/systray)
   testutil/                Test helpers (httptest server)
 ```

@@ -22,12 +22,12 @@ import (
 	"github.com/fhsinchy/bolt/internal/server"
 )
 
-const version = "0.2.0-dev"
+const version = "0.3.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		// No args — launch headless daemon.
-		launchHeadless()
+		// No args — launch GUI.
+		launchGUI()
 		return
 	}
 
@@ -36,7 +36,17 @@ func main() {
 
 	switch cmd {
 	case "start":
-		launchHeadless()
+		headless := false
+		for _, arg := range args {
+			if arg == "--headless" {
+				headless = true
+			}
+		}
+		if headless {
+			launchHeadless()
+		} else {
+			launchGUI()
+		}
 	case "stop":
 		runStop()
 	case "add":
@@ -82,8 +92,9 @@ func printUsage() {
 	fmt.Print(`bolt - fast segmented download manager
 
 Usage:
-  bolt                       Start the daemon (headless)
-  bolt start                 Start the daemon (headless)
+  bolt                       Start the GUI
+  bolt start                 Start the GUI
+  bolt start --headless      Start the daemon (headless, no GUI)
   bolt stop                  Stop the running daemon
   bolt add <url> [flags]     Add and start a download
   bolt list [flags]          List downloads
@@ -111,8 +122,21 @@ Cancel flags:
 `)
 }
 
-// launchHeadless starts the daemon with HTTP server (no GUI).
-func launchHeadless() {
+// daemon holds shared resources for both GUI and headless modes.
+type daemon struct {
+	cfg      *config.Config
+	store    *db.Store
+	bus      *event.Bus
+	engine   *engine.Engine
+	queueMgr *queue.Manager
+	server   *server.Server
+	ctx      context.Context
+	cancel   context.CancelFunc
+	subID    int
+}
+
+// setupDaemon initializes all shared resources (config, DB, engine, queue, server).
+func setupDaemon() *daemon {
 	// 1. Load config
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
@@ -128,7 +152,6 @@ func launchHeadless() {
 	if err := pid.Write(); err != nil {
 		fatal(fmt.Errorf("writing PID file: %w", err))
 	}
-	defer pid.Remove()
 
 	// 4. Open database
 	dbPath := filepath.Join(config.Dir(), "bolt.db")
@@ -136,21 +159,19 @@ func launchHeadless() {
 	if err != nil {
 		fatal(fmt.Errorf("opening database: %w", err))
 	}
-	defer store.Close()
 
 	// 5. Create event bus, engine, queue manager
 	bus := event.NewBus()
 	eng := engine.New(store, cfg, bus)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var queueMgr *queue.Manager
 	queueMgr = queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
 	})
 
-	// 6. Wire queue completion: subscribe to bus events.
+	// 6. Wire queue completion
 	ch, subID := bus.Subscribe()
 	go func() {
 		for evt := range ch {
@@ -169,43 +190,73 @@ func launchHeadless() {
 			}
 		}
 	}()
-	defer bus.Unsubscribe(subID)
 
 	// 7. Create HTTP server
 	srv := server.New(eng, store, cfg, bus, queueMgr)
 
-	// 8. Start queue manager goroutine
-	go queueMgr.Run(ctx)
+	return &daemon{
+		cfg:      cfg,
+		store:    store,
+		bus:      bus,
+		engine:   eng,
+		queueMgr: queueMgr,
+		server:   srv,
+		ctx:      ctx,
+		cancel:   cancel,
+		subID:    subID,
+	}
+}
 
-	// 9. Start HTTP server goroutine
+// cleanup releases resources that should always be released.
+func (d *daemon) cleanup() {
+	d.bus.Unsubscribe(d.subID)
+	d.store.Close()
+	pid.Remove()
+}
+
+// shutdown gracefully shuts down the server and engine.
+func (d *daemon) shutdown() {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+
+	if err := d.server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server shutdown", "error", err)
+	}
+	if err := d.engine.Shutdown(shutdownCtx); err != nil {
+		slog.Error("engine shutdown", "error", err)
+	}
+	d.cancel()
+}
+
+// launchHeadless starts the daemon with HTTP server (no GUI).
+func launchHeadless() {
+	d := setupDaemon()
+	defer d.cleanup()
+
+	// Start queue manager goroutine
+	go d.queueMgr.Run(d.ctx)
+
+	// Start HTTP server goroutine
 	go func() {
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
+		if err := d.server.Start(d.ctx); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 		}
 	}()
 
-	// 10. Resume interrupted downloads
-	if err := eng.Start(ctx); err != nil {
+	// Resume interrupted downloads
+	if err := d.engine.Start(d.ctx); err != nil {
 		slog.Error("resume interrupted downloads", "error", err)
 	}
 
-	// 11. Block on SIGINT/SIGTERM
+	fmt.Printf("Bolt %s — headless mode\n", version)
+
+	// Block on SIGINT/SIGTERM
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigCh
 	fmt.Printf("\nReceived %s, shutting down...\n", sig)
 
-	// 12. Shutdown sequence
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server shutdown", "error", err)
-	}
-	if err := eng.Shutdown(shutdownCtx); err != nil {
-		slog.Error("engine shutdown", "error", err)
-	}
-	cancel()
+	d.shutdown()
 }
 
 // runStop stops the running daemon.

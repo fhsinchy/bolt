@@ -37,5 +37,12 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Node (for future frontend)
+# Wails build output
+build/bin/
+
+# Node
 node_modules/
+
+# Frontend build output
+frontend/dist/
+frontend/wailsjs/
