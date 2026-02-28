@@ -90,6 +90,8 @@ make dev         # wails dev (hot-reload)
 make test        # run all tests (no Wails tags needed for tests)
 make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
+make test-stress # run all tests including stress tests (slower, ~2 min)
+make test-cover  # run tests with coverage report
 make clean       # remove binary, clear test cache
 ```
 
