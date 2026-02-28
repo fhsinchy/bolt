@@ -17,7 +17,6 @@ Fast, segmented download manager built with Go. See `bolt-prd.md` and `bolt-trd.
 
 ## TRD Errata
 
-- TRD §3.1 says `github.com/farhanishmam/bolt` — this is wrong. The correct module path is `github.com/fhsinchy/bolt`.
 - TRD §13.4 says Wails v2 has native `options.SystemTray` — this is incorrect. Wails v2 has no system tray API. We use `energye/systray` instead.
 
 ## Development Phases
