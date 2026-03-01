@@ -15,14 +15,16 @@ import (
 	"github.com/fhsinchy/bolt/internal/db"
 	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
+	"golang.org/x/time/rate"
 )
 
 // Engine orchestrates the full download lifecycle.
 type Engine struct {
-	store  *db.Store
-	cfg    *config.Config
-	bus    *event.Bus
-	client *http.Client
+	store   *db.Store
+	cfg     *config.Config
+	bus     *event.Bus
+	client  *http.Client
+	limiter *rate.Limiter
 
 	mu     sync.Mutex
 	active map[string]*activeDownload
@@ -40,23 +42,59 @@ type activeDownload struct {
 
 // New creates a new Engine.
 func New(store *db.Store, cfg *config.Config, bus *event.Bus) *Engine {
-	return &Engine{
+	e := &Engine{
 		store:  store,
 		cfg:    cfg,
 		bus:    bus,
 		client: newHTTPClient(cfg),
 		active: make(map[string]*activeDownload),
 	}
+	e.setLimiter(cfg.GlobalSpeedLimit)
+	return e
 }
 
 // NewWithClient creates a new Engine with a custom HTTP client (for testing).
 func NewWithClient(store *db.Store, cfg *config.Config, bus *event.Bus, client *http.Client) *Engine {
-	return &Engine{
+	e := &Engine{
 		store:  store,
 		cfg:    cfg,
 		bus:    bus,
 		client: client,
 		active: make(map[string]*activeDownload),
+	}
+	e.setLimiter(cfg.GlobalSpeedLimit)
+	return e
+}
+
+// setLimiter creates a rate limiter for the given bytes-per-second value.
+// A value of 0 or negative means unlimited (limiter is set to nil).
+func (e *Engine) setLimiter(bytesPerSec int64) {
+	if bytesPerSec <= 0 {
+		e.limiter = nil
+		return
+	}
+	burst := int(bytesPerSec)
+	if burst < readBufSize {
+		burst = readBufSize
+	}
+	e.limiter = rate.NewLimiter(rate.Limit(bytesPerSec), burst)
+}
+
+// SetSpeedLimit updates the global speed limit at runtime.
+func (e *Engine) SetSpeedLimit(bytesPerSec int64) {
+	if bytesPerSec <= 0 {
+		e.limiter = nil
+		return
+	}
+	burst := int(bytesPerSec)
+	if burst < readBufSize {
+		burst = readBufSize
+	}
+	if e.limiter != nil {
+		e.limiter.SetLimit(rate.Limit(bytesPerSec))
+		e.limiter.SetBurst(burst)
+	} else {
+		e.limiter = rate.NewLimiter(rate.Limit(bytesPerSec), burst)
 	}
 }
 
@@ -226,6 +264,7 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 				client:   e.client,
 				reportCh: reportCh,
 				file:     file,
+				limiter:  e.limiter,
 			}
 			w.RunWithRetry(dlCtx, e.cfg.MaxRetries)
 		}(i)

@@ -16,19 +16,19 @@
   const statusBadge = $derived.by(() => {
     switch (download.status) {
       case "completed":
-        return { text: "Completed", class: "bg-green-100 text-green-700" };
+        return { text: "Completed", class: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" };
       case "active":
-        return { text: "Downloading", class: "bg-blue-100 text-blue-700" };
+        return { text: "Downloading", class: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" };
       case "queued":
-        return { text: "Queued", class: "bg-yellow-100 text-yellow-700" };
+        return { text: "Queued", class: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" };
       case "error":
-        return { text: "Error", class: "bg-red-100 text-red-700" };
+        return { text: "Error", class: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" };
       case "paused":
-        return { text: "Paused", class: "bg-gray-100 text-gray-600" };
+        return { text: "Paused", class: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" };
       case "refresh":
-        return { text: "Refresh", class: "bg-orange-100 text-orange-700" };
+        return { text: "Refresh", class: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" };
       default:
-        return { text: download.status, class: "bg-gray-100 text-gray-600" };
+        return { text: download.status, class: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" };
     }
   });
 
@@ -79,8 +79,8 @@
 </script>
 
 <div
-  class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 hover:bg-gray-100 cursor-default transition-colors {selected
-    ? 'bg-blue-50'
+  class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-default transition-colors {selected
+    ? 'bg-blue-50 dark:bg-blue-900/30'
     : ''}"
   role="button"
   tabindex="0"
@@ -112,7 +112,7 @@
       />
     </div>
 
-    <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+    <div class="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
       <span>{sizeText}</span>
       {#if download.status === "active" && download.speed}
         <span>{formatSpeed(download.speed)}</span>

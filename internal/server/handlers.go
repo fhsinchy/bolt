@@ -224,6 +224,9 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if partial.MaxConcurrent != nil {
 		s.queue.SetMaxConcurrent(*partial.MaxConcurrent)
 	}
+	if partial.GlobalSpeedLimit != nil {
+		s.engine.SetSpeedLimit(*partial.GlobalSpeedLimit)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "updated",

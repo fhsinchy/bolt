@@ -37,11 +37,11 @@
 </script>
 
 <div
-  class="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-200"
+  class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
   style="--wails-draggable: drag"
 >
   <!-- App title -->
-  <span class="text-sm font-bold text-gray-700 mr-2" style="--wails-draggable: no-drag">
+  <span class="text-sm font-bold text-gray-700 dark:text-gray-200 mr-2" style="--wails-draggable: no-drag">
     Bolt
   </span>
 
@@ -63,7 +63,7 @@
 
   <button
     onclick={pauseAll}
-    class="p-1.5 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
+    class="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
     title="Pause All"
     style="--wails-draggable: no-drag"
   >
@@ -75,7 +75,7 @@
 
   <button
     onclick={resumeAll}
-    class="p-1.5 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
+    class="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
     title="Resume All"
     style="--wails-draggable: no-drag"
   >
@@ -86,7 +86,7 @@
 
   <button
     onclick={clearCompleted}
-    class="p-1.5 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
+    class="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
     title="Clear Completed"
     style="--wails-draggable: no-drag"
   >
@@ -96,11 +96,11 @@
     </svg>
   </button>
 
-  <div class="w-px h-5 bg-gray-200 mx-1"></div>
+  <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
   <button
     onclick={onSettings}
-    class="p-1.5 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
+    class="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
     title="Settings"
     style="--wails-draggable: no-drag"
   >

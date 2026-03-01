@@ -12,7 +12,7 @@
 </script>
 
 <div
-  class="flex items-center gap-4 px-4 py-1.5 bg-white border-t border-gray-200 text-xs text-gray-500"
+  class="flex items-center gap-4 px-4 py-1.5 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400"
 >
   <span>{activeDownloads.length} active</span>
   <span>{queuedCount} queued</span>

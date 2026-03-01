@@ -28,7 +28,7 @@
 </script>
 
 <div class="flex items-center gap-2 w-full">
-  <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+  <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
     {#if indeterminate}
       <div class="h-full bg-blue-500 rounded-full animate-pulse w-full"></div>
     {:else}
@@ -38,7 +38,7 @@
       ></div>
     {/if}
   </div>
-  <span class="text-xs text-gray-500 w-10 text-right tabular-nums">
+  <span class="text-xs text-gray-500 dark:text-gray-400 w-10 text-right tabular-nums">
     {#if indeterminate}
       --
     {:else}

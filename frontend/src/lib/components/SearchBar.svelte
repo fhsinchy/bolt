@@ -8,7 +8,7 @@
   }
 </script>
 
-<div class="px-4 py-2 bg-white border-b border-gray-200">
+<div class="px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
   <div class="relative">
     <svg
       class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
@@ -25,7 +25,7 @@
       placeholder="Search downloads..."
       {value}
       oninput={handleInput}
-      class="w-full pl-9 pr-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      class="w-full pl-9 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700 dark:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
     />
   </div>
 </div>

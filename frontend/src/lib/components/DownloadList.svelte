@@ -6,7 +6,7 @@
 </script>
 
 {#if downloads.length === 0}
-  <div class="flex flex-col items-center justify-center h-full text-gray-400">
+  <div class="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500">
     <svg class="w-16 h-16 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />

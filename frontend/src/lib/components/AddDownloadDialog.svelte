@@ -106,15 +106,15 @@
   onmousedown={(e) => { if (e.target === e.currentTarget) onClose(); }}
 >
   <!-- Dialog -->
-  <div class="bg-white rounded-lg shadow-xl w-[480px] max-h-[90vh] overflow-y-auto">
-    <div class="px-6 py-4 border-b border-gray-200">
-      <h2 class="text-lg font-semibold text-gray-900">Add Download</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[480px] max-h-[90vh] overflow-y-auto">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Download</h2>
     </div>
 
     <div class="px-6 py-4 space-y-4">
       <!-- URL -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="url-input">URL</label>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="url-input">URL</label>
         <input
           id="url-input"
           type="text"
@@ -122,7 +122,7 @@
           onblur={probe}
           onkeydown={handleUrlKeydown}
           placeholder="https://example.com/file.zip"
-          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           autofocus
         />
       </div>
@@ -136,13 +136,13 @@
       {/if}
 
       {#if probeError}
-        <div class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
+        <div class="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2 rounded-md">
           {probeError}
         </div>
       {/if}
 
       {#if probeResult}
-        <div class="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md">
+        <div class="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/30 px-3 py-2 rounded-md">
           Ready — {probeResult.total_size > 0 ? formatBytes(probeResult.total_size) : "Unknown size"}
           {#if probeResult.accepts_ranges}
             — Resumable
@@ -152,29 +152,29 @@
 
       <!-- Filename -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="filename-input">Filename</label>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="filename-input">Filename</label>
         <input
           id="filename-input"
           type="text"
           bind:value={filename}
           placeholder="Auto-detected"
-          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
       <!-- Directory -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="dir-input">Save to</label>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="dir-input">Save to</label>
         <div class="flex gap-2">
           <input
             id="dir-input"
             type="text"
             bind:value={dir}
-            class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
             onclick={selectDir}
-            class="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+            class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
           >
             Browse
           </button>
@@ -183,7 +183,7 @@
 
       <!-- Segments -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="segments-input">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="segments-input">
           Segments: {segments}
         </label>
         <input
@@ -197,16 +197,16 @@
       </div>
 
       {#if submitError}
-        <div class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
+        <div class="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2 rounded-md">
           {submitError}
         </div>
       {/if}
     </div>
 
-    <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+    <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
       <button
         onclick={onClose}
-        class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+        class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
       >
         Cancel
       </button>

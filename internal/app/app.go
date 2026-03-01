@@ -12,6 +12,7 @@ import (
 	"github.com/fhsinchy/bolt/internal/engine"
 	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
+	"github.com/fhsinchy/bolt/internal/notify"
 	"github.com/fhsinchy/bolt/internal/queue"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -76,11 +77,13 @@ func (a *App) OnStartup(ctx context.Context) {
 					"id":       e.DownloadID,
 					"filename": e.Filename,
 				})
+				_ = notify.Send("Download Complete", e.Filename)
 			case event.DownloadFailed:
 				wailsRuntime.EventsEmit(ctx, "download_failed", map[string]any{
 					"id":    e.DownloadID,
 					"error": e.Error,
 				})
+				_ = notify.Send("Download Failed", e.Error)
 			case event.DownloadPaused:
 				wailsRuntime.EventsEmit(ctx, "download_paused", map[string]any{
 					"id": e.DownloadID,
@@ -255,6 +258,9 @@ func (a *App) UpdateConfig(partial ConfigUpdate) error {
 
 	if partial.MaxConcurrent != nil {
 		a.queue.SetMaxConcurrent(*partial.MaxConcurrent)
+	}
+	if partial.GlobalSpeedLimit != nil {
+		a.engine.SetSpeedLimit(*partial.GlobalSpeedLimit)
 	}
 
 	return nil

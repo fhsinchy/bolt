@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fhsinchy/bolt/internal/model"
+	"golang.org/x/time/rate"
 )
 
 type segmentReport struct {
@@ -27,6 +28,7 @@ type segmentWorker struct {
 	client   *http.Client
 	reportCh chan<- segmentReport
 	file     *os.File
+	limiter  *rate.Limiter
 }
 
 const readBufSize = 32 * 1024
@@ -84,6 +86,12 @@ func (w *segmentWorker) Run(ctx context.Context) error {
 			w.reportCh <- segmentReport{
 				Index:     w.segment.Index,
 				BytesRead: int64(n),
+			}
+
+			if w.limiter != nil {
+				if err := w.limiter.WaitN(ctx, n); err != nil {
+					return err
+				}
 			}
 		}
 

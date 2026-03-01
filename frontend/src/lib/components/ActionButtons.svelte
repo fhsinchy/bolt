@@ -65,7 +65,7 @@
   {#if download.status === "active"}
     <button
       onclick={pause}
-      class="p-1 rounded hover:bg-gray-200 text-gray-600"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
       title="Pause"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -78,7 +78,7 @@
   {#if download.status === "paused" || download.status === "queued"}
     <button
       onclick={resume}
-      class="p-1 rounded hover:bg-gray-200 text-gray-600"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
       title="Resume"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -90,7 +90,7 @@
   {#if download.status === "error"}
     <button
       onclick={retry}
-      class="p-1 rounded hover:bg-gray-200 text-gray-600"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
       title="Retry"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -103,7 +103,7 @@
   {#if download.status === "completed"}
     <button
       onclick={openFile}
-      class="p-1 rounded hover:bg-gray-200 text-gray-600"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
       title="Open File"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -114,7 +114,7 @@
     </button>
     <button
       onclick={openFolder}
-      class="p-1 rounded hover:bg-gray-200 text-gray-600"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
       title="Open Folder"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -126,7 +126,7 @@
   {#if download.status !== "completed"}
     <button
       onclick={cancel}
-      class="p-1 rounded hover:bg-gray-200 text-red-500"
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-red-500"
       title="Cancel"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
