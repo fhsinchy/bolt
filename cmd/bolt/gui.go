@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,12 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+//go:embed appicon.png
+var appIcon []byte
 
 func launchGUI() {
 	d := setupDaemon()
@@ -97,6 +102,10 @@ func launchGUI() {
 		MinHeight: 480,
 		AssetServer: &assetserver.Options{
 			Assets: bolt.FrontendAssets,
+		},
+		Linux: &linux.Options{
+			Icon:        appIcon,
+			ProgramName: "bolt",
 		},
 		OnStartup:  onStartup,
 		OnShutdown: onShutdown,

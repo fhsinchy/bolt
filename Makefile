@@ -47,6 +47,10 @@ install: build
 	cp $(BINARY) ~/.local/bin/
 	mkdir -p ~/.config/systemd/user
 	cp dist/bolt.service ~/.config/systemd/user/
+	mkdir -p ~/.local/share/applications
+	cp dist/bolt.desktop ~/.local/share/applications/
+	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
+	cp build/appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	systemctl --user daemon-reload
 
 uninstall:
@@ -54,6 +58,8 @@ uninstall:
 	-systemctl --user disable bolt
 	rm -f ~/.local/bin/$(BINARY)
 	rm -f ~/.config/systemd/user/bolt.service
+	rm -f ~/.local/share/applications/bolt.desktop
+	rm -f ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	systemctl --user daemon-reload
 
 clean:
