@@ -56,9 +56,15 @@ func Start(cb Callbacks) {
 			}
 		})
 
-		// Click on the tray icon itself shows the window if hidden.
+		// Click on the tray icon itself toggles window visibility.
 		systray.SetOnClick(func(_ systray.IMenu) {
-			if !visible {
+			if visible {
+				visible = false
+				showItem.SetTitle("Show")
+				if cb.OnHide != nil {
+					cb.OnHide()
+				}
+			} else {
 				visible = true
 				showItem.SetTitle("Hide")
 				if cb.OnShow != nil {

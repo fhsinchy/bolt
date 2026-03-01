@@ -11,7 +11,7 @@ import (
 	"github.com/fhsinchy/bolt/internal/model"
 )
 
-// Probe sends a HEAD request (falling back to a partial GET on 405) to
+// Probe sends a HEAD request (falling back to a partial GET on 403/405) to
 // discover metadata about the resource at rawURL. The returned ProbeResult
 // contains the total size, range-request support, filename from
 // Content-Disposition, ETag, Last-Modified, Content-Type, and the final URL
@@ -30,7 +30,8 @@ func Probe(ctx context.Context, client *http.Client, rawURL string, headers map[
 }
 
 // probeHEAD performs a HEAD request. It returns (nil, nil) when the server
-// responds with 405 Method Not Allowed so that the caller can fall back.
+// responds with 403 or 405 so that the caller can fall back. Pre-signed
+// URLs (S3, R2) commonly reject HEAD with 403.
 func probeHEAD(ctx context.Context, client *http.Client, rawURL string, headers map[string]string) (*model.ProbeResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
 	if err != nil {
@@ -44,7 +45,7 @@ func probeHEAD(ctx context.Context, client *http.Client, rawURL string, headers 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusMethodNotAllowed {
+	if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusForbidden {
 		return nil, nil // signal caller to fall back
 	}
 

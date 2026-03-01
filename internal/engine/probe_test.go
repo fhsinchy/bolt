@@ -174,8 +174,45 @@ func TestProbe_ServerError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 403 response, got nil")
 	}
-	want := fmt.Sprintf("server rejected probe request: HEAD %s/forbidden returned 403", ts.URL)
+	// HEAD 403 falls back to GET, which also returns 403.
+	want := fmt.Sprintf("server rejected probe request: GET %s/forbidden returned 403", ts.URL)
 	if err.Error() != want {
 		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestProbe_HeadForbiddenFallback(t *testing.T) {
+	// Simulates pre-signed S3/R2 URLs that reject HEAD with 403
+	// but accept GET normally.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Range", "bytes 0-0/5242880")
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.Header().Set("Content-Disposition", `attachment; filename="archive.rar"`)
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte{0})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	client := ts.Client()
+	result, err := Probe(context.Background(), client, ts.URL+"/presigned", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TotalSize != 5242880 {
+		t.Errorf("TotalSize = %d, want 5242880", result.TotalSize)
+	}
+	if !result.AcceptsRanges {
+		t.Error("AcceptsRanges = false, want true")
+	}
+	if result.Filename != "archive.rar" {
+		t.Errorf("Filename = %q, want %q", result.Filename, "archive.rar")
 	}
 }

@@ -164,14 +164,19 @@
       </div>
 
       <!-- Minimize to tray -->
-      <div class="flex items-center gap-2">
-        <input
-          id="settings-tray"
-          type="checkbox"
-          bind:checked={minimizeToTray}
-          class="w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500"
-        />
-        <label class="text-sm font-medium text-gray-700" for="settings-tray">Minimize to tray on close</label>
+      <div>
+        <div class="flex items-center gap-2">
+          <input
+            id="settings-tray"
+            type="checkbox"
+            bind:checked={minimizeToTray}
+            class="w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label class="text-sm font-medium text-gray-700" for="settings-tray">Minimize to tray on close</label>
+        </div>
+        {#if !minimizeToTray}
+          <p class="mt-1 ml-6 text-xs text-amber-600">Closing the window will quit the application.</p>
+        {/if}
       </div>
 
       <hr class="border-gray-200" />

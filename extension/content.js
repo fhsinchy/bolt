@@ -79,9 +79,16 @@ document.addEventListener('click', (e) => {
 
   console.log('[Bolt] Intercepted link click:', url);
 
-  chrome.runtime.sendMessage({
-    type: 'link-download',
-    url,
-    referrer: location.href,
-  });
+  try {
+    chrome.runtime.sendMessage({
+      type: 'link-download',
+      url,
+      referrer: location.href,
+    });
+  } catch {
+    // Extension context invalidated (e.g. extension reloaded). Let the
+    // browser handle the navigation normally by re-clicking the link.
+    console.warn('[Bolt] Extension context invalidated — falling back to browser.');
+    window.open(url, '_self');
+  }
 }, true); // Capture phase — runs before page handlers.

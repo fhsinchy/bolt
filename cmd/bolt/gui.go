@@ -89,8 +89,6 @@ func launchGUI() {
 		application.OnShutdown(ctx)
 	}
 
-	minimizeToTray := d.cfg.MinimizeToTray
-
 	err := wails.Run(&options.App{
 		Title:     "Bolt",
 		Width:     960,
@@ -106,7 +104,7 @@ func launchGUI() {
 			if quitting {
 				return false
 			}
-			if minimizeToTray {
+			if d.cfg.MinimizeToTray {
 				wailsRuntime.WindowHide(ctx)
 				tray.SetVisible(false)
 				return true
