@@ -41,6 +41,8 @@ func launchGUI() {
 
 	fmt.Printf("Bolt %s — GUI mode\n", version)
 
+	quitting := false
+
 	// Wrap OnStartup to also start the system tray.
 	onStartup := func(ctx context.Context) {
 		application.OnStartup(ctx)
@@ -59,6 +61,7 @@ func launchGUI() {
 				_ = application.ResumeAll()
 			},
 			OnQuit: func() {
+				quitting = true
 				tray.Quit()
 				wailsRuntime.Quit(ctx)
 			},
@@ -84,6 +87,9 @@ func launchGUI() {
 		OnStartup:  onStartup,
 		OnShutdown: onShutdown,
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			if quitting {
+				return false
+			}
 			if minimizeToTray {
 				wailsRuntime.WindowHide(ctx)
 				tray.SetVisible(false)
