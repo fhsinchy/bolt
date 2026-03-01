@@ -1,4 +1,4 @@
-.PHONY: build build-gui build-extension dev test test-race test-v test-stress test-cover clean
+.PHONY: build build-gui build-extension build-extension-chrome build-extension-firefox dev test test-race test-v test-stress test-cover install uninstall clean
 
 BINARY = bolt
 
@@ -32,9 +32,29 @@ test-cover:
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
 
-build-extension:
+build-extension: build-extension-chrome build-extension-firefox
+
+build-extension-chrome:
 	mkdir -p dist
-	cd extension && zip -r ../dist/bolt-capture.zip . -x ".*"
+	cd extensions/chrome && zip -r ../../dist/bolt-capture-chrome.zip . -x ".*"
+
+build-extension-firefox:
+	mkdir -p dist
+	cd extensions/firefox && zip -r ../../dist/bolt-capture-firefox.zip . -x ".*"
+
+install: build
+	mkdir -p ~/.local/bin
+	cp $(BINARY) ~/.local/bin/
+	mkdir -p ~/.config/systemd/user
+	cp dist/bolt.service ~/.config/systemd/user/
+	systemctl --user daemon-reload
+
+uninstall:
+	-systemctl --user stop bolt
+	-systemctl --user disable bolt
+	rm -f ~/.local/bin/$(BINARY)
+	rm -f ~/.config/systemd/user/bolt.service
+	systemctl --user daemon-reload
 
 clean:
 	rm -f $(BINARY)

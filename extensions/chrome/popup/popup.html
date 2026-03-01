@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bolt Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <img src="../icons/icon-48.png" alt="Bolt" class="logo">
+      <h1>Bolt Capture</h1>
+    </header>
+
+    <div class="status-bar" id="status-bar">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Checking...</span>
+    </div>
+
+    <div class="form-group">
+      <label for="server-url">Server URL</label>
+      <input type="text" id="server-url" placeholder="http://127.0.0.1:9683">
+    </div>
+
+    <div class="form-group">
+      <label for="auth-token">Auth Token <span class="required">*</span></label>
+      <div class="password-wrapper">
+        <input type="password" id="auth-token" placeholder="Paste token from config">
+        <button type="button" id="toggle-token" class="icon-btn" title="Show/hide token">
+          <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <span class="hint">Find <code>auth_token</code> in <code>~/.config/bolt/config.json</code> or Bolt Settings</span>
+    </div>
+
+    <div class="form-group toggle-group">
+      <label for="capture-enabled">Capture Downloads</label>
+      <label class="switch">
+        <input type="checkbox" id="capture-enabled" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button id="test-btn" class="btn btn-secondary">Test Connection</button>
+      <button id="save-btn" class="btn btn-primary">Save</button>
+    </div>
+
+    <div class="warning-banner" id="save-dialog-warning">
+      <div class="warning-content">
+        <strong>Recommended:</strong> Disable <strong>Ask where to save each file</strong> in
+        <a href="#" id="chrome-downloads-link">browser download settings</a>
+        to prevent the Save As dialog from appearing.
+      </div>
+      <button id="dismiss-warning" class="warning-dismiss" title="Dismiss">&times;</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

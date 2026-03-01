@@ -77,9 +77,9 @@ Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser download
 
 **What was built:**
 - Step 1: Backend — Extended `RefreshURL` to accept optional `headers` parameter
-- Step 2: Extension scaffolding — `extension/manifest.json`, icons
-- Step 3: Service worker — `extension/background.js` (interception, context menu, refresh matching)
-- Step 4: Popup UI — `extension/popup/` (config, connection test, capture toggle)
+- Step 2: Extension scaffolding — `extensions/chrome/`, `extensions/firefox/`, icons
+- Step 3: Service worker / background script — interception, context menu, refresh matching
+- Step 4: Popup UI — config, connection test, capture toggle
 - Step 5: Makefile — `build-extension` target
 
 ## Key Design Decisions
@@ -90,7 +90,18 @@ Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser download
 
 **Phase 3:** GUI mode is now the default. `bolt` (no args) and `bolt start` launch the GUI. `bolt start --headless` runs the headless daemon (Phase 2 behavior). Both modes start the HTTP server for CLI/extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread.
 
-**Phase 4:** Vanilla JS extension (no build step). Check-then-cancel safety: verifies Bolt is reachable before cancelling browser download — if Bolt is down, the browser download proceeds normally. `RefreshURL` now accepts optional `headers` map for cookie/referrer forwarding from the extension. Tier 2 refresh matching checks `/api/downloads?status=refresh` for candidates before creating new downloads.
+**Phase 4:** Vanilla JS extensions split into `extensions/chrome/` and `extensions/firefox/` (no build step, no runtime polyfills). Each directory is directly loadable in its browser. Check-then-cancel safety: verifies Bolt is reachable before cancelling browser download — if Bolt is down, the browser download proceeds normally. `RefreshURL` now accepts optional `headers` map for cookie/referrer forwarding from the extension. Tier 2 refresh matching checks `/api/downloads?status=refresh` for candidates before creating new downloads.
+
+### Alpha Release Features (COMPLETE)
+Six features for daily-driver readiness:
+
+**What was built:**
+- Global speed limiter — `golang.org/x/time/rate`, `Engine.SetSpeedLimit()`, throttles all segments via shared `rate.Limiter`
+- Complete settings panel — speed limit (KB/MB) + theme selector in SettingsDialog
+- Desktop notifications — `internal/notify/` package, `notify-send` on Linux, `osascript` on macOS, PowerShell toast on Windows
+- Dark theme — Tailwind `@custom-variant dark`, class-based toggle on `<html>`, system/light/dark modes, all 10 components updated
+- Systemd user unit — `dist/bolt.service`, `make install` / `make uninstall`
+- Firefox extension support — separate `extensions/firefox/` directory using native `browser.*` API, no polyfills
 
 ## Commands
 
@@ -103,7 +114,11 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
-make build-extension  # zip extension → dist/bolt-capture.zip
+make build-extension         # build both Chrome and Firefox zips
+make build-extension-chrome  # zip extensions/chrome/ → dist/bolt-capture-chrome.zip
+make build-extension-firefox # zip extensions/firefox/ → dist/bolt-capture-firefox.zip
+make install     # build + install binary + systemd unit
+make uninstall   # stop + disable + remove binary + unit
 make clean       # remove binary, clear test cache
 ```
 
@@ -152,13 +167,23 @@ internal/
   cli/                     CLI HTTP client
   pid/                     PID file management
   tray/                    System tray (energye/systray)
+  notify/                  Desktop notifications (notify-send, osascript, PowerShell)
   testutil/                Test helpers (httptest server)
-extension/                 Chromium Manifest V3 browser extension
-  manifest.json            MV3 manifest (permissions, service worker)
-  background.js            Service worker (interception, context menu, refresh)
-  popup/
-    popup.html             Config popup layout
-    popup.css              Dark theme styling
-    popup.js               Config load/save, connection test
-  icons/                   Extension icons (16, 48, 128)
+extensions/
+  chrome/                  Chrome browser extension (chrome.* API)
+    manifest.json          MV3 manifest (service_worker, downloads.ui)
+    background.js          Service worker (interception, context menu, refresh)
+    content.js             Content script (link click interception)
+    popup/                 Config popup (with Save As warning banner)
+    welcome/               First-install welcome page (2 steps)
+    icons/                 Extension icons (16, 48, 128)
+  firefox/                 Firefox browser extension (browser.* API)
+    manifest.json          MV3 manifest (background scripts, menus, gecko settings)
+    background.js          Background script (no setUiOptions)
+    content.js             Content script (link click interception)
+    popup/                 Config popup (no Save As warning)
+    welcome/               First-install welcome page (1 step, no JS)
+    icons/                 Extension icons (16, 48, 128)
+dist/
+  bolt.service             Systemd user unit file
 ```

@@ -1,4 +1,4 @@
-// Bolt Capture — Content Script
+// Bolt Capture — Content Script (Chrome)
 // Intercepts clicks on download links BEFORE the browser starts the download,
 // preventing the Save As dialog from appearing.
 //

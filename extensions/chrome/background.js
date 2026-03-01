@@ -1,4 +1,4 @@
-// Bolt Capture — Service Worker
+// Bolt Capture — Service Worker (Chrome)
 // Intercepts browser downloads and sends them to the Bolt daemon.
 //
 // Dev logging: open chrome://extensions → Bolt Capture → "Service worker" link
