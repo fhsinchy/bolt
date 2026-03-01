@@ -123,14 +123,15 @@ func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var body struct {
-		URL string `json:"url"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
 		writeError(w, http.StatusBadRequest, "url is required", "VALIDATION_ERROR")
 		return
 	}
 
-	if err := s.engine.RefreshURL(r.Context(), id, body.URL); err != nil {
+	if err := s.engine.RefreshURL(r.Context(), id, body.URL, body.Headers); err != nil {
 		mapEngineError(w, err)
 		return
 	}

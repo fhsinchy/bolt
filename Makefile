@@ -1,4 +1,4 @@
-.PHONY: build build-gui dev test test-race test-v test-stress test-cover clean
+.PHONY: build build-gui build-extension dev test test-race test-v test-stress test-cover clean
 
 BINARY = bolt
 
@@ -32,7 +32,11 @@ test-cover:
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
 
+build-extension:
+	mkdir -p dist
+	cd extension && zip -r ../dist/bolt-capture.zip . -x ".*"
+
 clean:
 	rm -f $(BINARY)
-	rm -rf frontend/dist
+	rm -rf frontend/dist dist
 	go clean -testcache

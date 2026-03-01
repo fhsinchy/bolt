@@ -20,8 +20,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.GlobalSpeedLimit != 0 {
 		t.Errorf("GlobalSpeedLimit = %d, want 0", cfg.GlobalSpeedLimit)
 	}
-	if cfg.ServerPort != 6800 {
-		t.Errorf("ServerPort = %d, want 6800", cfg.ServerPort)
+	if cfg.ServerPort != 9683 {
+		t.Errorf("ServerPort = %d, want 9683", cfg.ServerPort)
 	}
 	if len(cfg.AuthToken) != 64 {
 		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
@@ -82,8 +82,8 @@ func TestLoad_NonexistentCreatesDefaults(t *testing.T) {
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16", cfg.DefaultSegments)
 	}
-	if cfg.ServerPort != 6800 {
-		t.Errorf("ServerPort = %d, want 6800", cfg.ServerPort)
+	if cfg.ServerPort != 9683 {
+		t.Errorf("ServerPort = %d, want 9683", cfg.ServerPort)
 	}
 	if len(cfg.AuthToken) != 64 {
 		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
@@ -121,8 +121,8 @@ func TestLoad_PartialJSON(t *testing.T) {
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16 (default)", cfg.DefaultSegments)
 	}
-	if cfg.ServerPort != 6800 {
-		t.Errorf("ServerPort = %d, want 6800 (default)", cfg.ServerPort)
+	if cfg.ServerPort != 9683 {
+		t.Errorf("ServerPort = %d, want 9683 (default)", cfg.ServerPort)
 	}
 	if cfg.MinSegmentSize != 1048576 {
 		t.Errorf("MinSegmentSize = %d, want 1048576 (default)", cfg.MinSegmentSize)

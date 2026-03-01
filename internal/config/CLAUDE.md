@@ -32,7 +32,7 @@ Configuration management via `config.json`. Platform-appropriate paths via `os.U
 
 ## Defaults
 
-- MaxConcurrent: 3, DefaultSegments: 16, ServerPort: 6800
+- MaxConcurrent: 3, DefaultSegments: 16, ServerPort: 9683
 - MinSegmentSize: 1 MB, MaxRetries: 10
 - AuthToken: 64-char hex (32 random bytes from `crypto/rand`)
 - DownloadDir: `~/Downloads`

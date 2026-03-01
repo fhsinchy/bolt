@@ -18,6 +18,7 @@ Fast, segmented download manager built with Go. See `bolt-prd.md` and `bolt-trd.
 ## TRD Errata
 
 - TRD §13.4 says Wails v2 has native `options.SystemTray` — this is incorrect. Wails v2 has no system tray API. We use `energye/systray` instead.
+- TRD/PRD specify port 6800, but this conflicts with aria2c's default JSON-RPC port. Changed to 9683.
 
 ## Development Phases
 
@@ -69,8 +70,17 @@ Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
 - Step 8: Settings dialog with config persistence
 - Step 9: System tray via `energye/systray` — `internal/tray/`
 
-### Phase 4: Browser Extension (NOT STARTED)
-Manifest V3 extension for download capture.
+### Phase 4: Browser Extension — P0 (COMPLETE)
+Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser downloads and sends them to the Bolt daemon via REST API.
+
+**Exit criteria (met):** Extension intercepts downloads, forwards cookies/referrer, uses check-then-cancel safety, supports context menu "Download with Bolt", Tier 2 refresh matching, and minimal config popup.
+
+**What was built:**
+- Step 1: Backend — Extended `RefreshURL` to accept optional `headers` parameter
+- Step 2: Extension scaffolding — `extension/manifest.json`, icons
+- Step 3: Service worker — `extension/background.js` (interception, context menu, refresh matching)
+- Step 4: Popup UI — `extension/popup/` (config, connection test, capture toggle)
+- Step 5: Makefile — `build-extension` target
 
 ## Key Design Decisions
 
@@ -79,6 +89,8 @@ Manifest V3 extension for download capture.
 **Phase 2:** CLI is now an HTTP client. The daemon (`bolt start`) runs the engine + HTTP server. CLI commands (`bolt add`, `bolt list`, etc.) talk to the daemon via REST API. Real-time progress uses WebSocket. The engine interface stayed identical — only the calling layer changed.
 
 **Phase 3:** GUI mode is now the default. `bolt` (no args) and `bolt start` launch the GUI. `bolt start --headless` runs the headless daemon (Phase 2 behavior). Both modes start the HTTP server for CLI/extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread.
+
+**Phase 4:** Vanilla JS extension (no build step). Check-then-cancel safety: verifies Bolt is reachable before cancelling browser download — if Bolt is down, the browser download proceeds normally. `RefreshURL` now accepts optional `headers` map for cookie/referrer forwarding from the extension. Tier 2 refresh matching checks `/api/downloads?status=refresh` for candidates before creating new downloads.
 
 ## Commands
 
@@ -91,6 +103,7 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
+make build-extension  # zip extension → dist/bolt-capture.zip
 make clean       # remove binary, clear test cache
 ```
 
@@ -140,4 +153,12 @@ internal/
   pid/                     PID file management
   tray/                    System tray (energye/systray)
   testutil/                Test helpers (httptest server)
+extension/                 Chromium Manifest V3 browser extension
+  manifest.json            MV3 manifest (permissions, service worker)
+  background.js            Service worker (interception, context menu, refresh)
+  popup/
+    popup.html             Config popup layout
+    popup.css              Dark theme styling
+    popup.js               Config load/save, connection test
+  icons/                   Extension icons (16, 48, 128)
 ```

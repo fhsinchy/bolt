@@ -53,7 +53,7 @@ func DefaultConfig() *Config {
 		MaxConcurrent:    3,
 		DefaultSegments:  16,
 		GlobalSpeedLimit: 0,
-		ServerPort:       6800,
+		ServerPort:       9683,
 		AuthToken:        generateToken(),
 		MinimizeToTray:   true,
 		ClipboardMonitor: false,

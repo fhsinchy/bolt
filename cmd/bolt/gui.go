@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	bolt "github.com/fhsinchy/bolt"
 	"github.com/fhsinchy/bolt/internal/app"
@@ -28,11 +29,21 @@ func launchGUI() {
 	go d.queueMgr.Run(d.ctx)
 
 	// Start HTTP server goroutine (for CLI and browser extension compatibility)
+	serverErr := make(chan error, 1)
 	go func() {
 		if err := d.server.Start(d.ctx); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
+			serverErr <- err
 		}
 	}()
+
+	// Check for immediate startup failure (e.g., port already in use)
+	select {
+	case err := <-serverErr:
+		slog.Error("HTTP server failed to start — CLI and browser extension will not work",
+			"port", d.cfg.ServerPort, "error", err)
+	case <-time.After(200 * time.Millisecond):
+		// Server bound successfully
+	}
 
 	// Resume interrupted downloads
 	if err := d.engine.Start(d.ctx); err != nil {

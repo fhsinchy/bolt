@@ -15,7 +15,7 @@
   let defaultSegments = $state(16);
   let maxRetries = $state(10);
   let minimizeToTray = $state(true);
-  let serverPort = $state(6800);
+  let serverPort = $state(9683);
   let authToken = $state("");
   let saving = $state(false);
   let error = $state("");

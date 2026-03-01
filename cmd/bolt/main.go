@@ -243,11 +243,20 @@ func launchHeadless() {
 	go d.queueMgr.Run(d.ctx)
 
 	// Start HTTP server goroutine
+	serverErr := make(chan error, 1)
 	go func() {
 		if err := d.server.Start(d.ctx); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
+			serverErr <- err
 		}
 	}()
+
+	// Check for immediate startup failure (e.g., port already in use)
+	select {
+	case err := <-serverErr:
+		fatal(fmt.Errorf("HTTP server failed on port %d: %w", d.cfg.ServerPort, err))
+	case <-time.After(200 * time.Millisecond):
+		// Server bound successfully
+	}
 
 	// Resume interrupted downloads
 	if err := d.engine.Start(d.ctx); err != nil {

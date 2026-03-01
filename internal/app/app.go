@@ -171,7 +171,7 @@ func (a *App) RetryDownload(id string) error {
 
 // RefreshURL updates the URL for a failed download.
 func (a *App) RefreshURL(id string, newURL string) error {
-	return a.engine.RefreshURL(context.Background(), id, newURL)
+	return a.engine.RefreshURL(context.Background(), id, newURL, nil)
 }
 
 // Probe sends a HEAD request to discover metadata about a URL.

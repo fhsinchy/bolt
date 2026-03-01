@@ -10,7 +10,7 @@ import (
 // RefreshURL performs a Tier 3 (manual) URL refresh. It probes the new URL,
 // verifies that the Content-Length matches the original TotalSize, and
 // updates the download's URL in the DB.
-func (e *Engine) RefreshURL(ctx context.Context, id string, newURL string) error {
+func (e *Engine) RefreshURL(ctx context.Context, id string, newURL string, headers map[string]string) error {
 	dl, err := e.store.GetDownload(ctx, id)
 	if err != nil {
 		return err
@@ -23,8 +23,14 @@ func (e *Engine) RefreshURL(ctx context.Context, id string, newURL string) error
 		return model.ErrAlreadyCompleted
 	}
 
+	// Use provided headers or fall back to existing download headers
+	probeHeaders := dl.Headers
+	if headers != nil {
+		probeHeaders = headers
+	}
+
 	// Probe the new URL
-	result, err := Probe(ctx, e.client, newURL, dl.Headers)
+	result, err := Probe(ctx, e.client, newURL, probeHeaders)
 	if err != nil {
 		return fmt.Errorf("probing new URL: %w", err)
 	}
@@ -35,7 +41,7 @@ func (e *Engine) RefreshURL(ctx context.Context, id string, newURL string) error
 	}
 
 	// Update the URL in DB
-	if err := e.store.UpdateDownloadURL(ctx, id, result.FinalURL, dl.Headers); err != nil {
+	if err := e.store.UpdateDownloadURL(ctx, id, result.FinalURL, probeHeaders); err != nil {
 		return fmt.Errorf("updating URL: %w", err)
 	}
 

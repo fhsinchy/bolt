@@ -333,7 +333,7 @@ func (c *Client) ShowWindow(ctx context.Context) error {
 // watchProgress connects to the WebSocket and displays progress for a download.
 func (c *Client) watchProgress(ctx context.Context, downloadID, filename string) error {
 	wsURL := fmt.Sprintf("ws%s/ws?token=%s",
-		c.baseURL[len("http"):], // "://127.0.0.1:6800"
+		c.baseURL[len("http"):], // "://127.0.0.1:9683"
 		url.QueryEscape(c.token),
 	)
 

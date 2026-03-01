@@ -396,7 +396,7 @@ func TestEngine_RefreshURL(t *testing.T) {
 
 	_ = store.UpdateDownloadStatus(ctx, dl.ID, model.StatusError, "link expired")
 
-	if err := eng.RefreshURL(ctx, dl.ID, ts.URL+"/new-file.bin"); err != nil {
+	if err := eng.RefreshURL(ctx, dl.ID, ts.URL+"/new-file.bin", nil); err != nil {
 		t.Fatalf("RefreshURL: %v", err)
 	}
 
@@ -430,7 +430,7 @@ func TestEngine_RefreshURL_SizeMismatch(t *testing.T) {
 	_ = store.UpdateDownloadStatus(ctx, dl.ID, model.StatusError, "expired")
 
 	eng.client = ts2.Client()
-	err = eng.RefreshURL(ctx, dl.ID, ts2.URL+"/bigger.bin")
+	err = eng.RefreshURL(ctx, dl.ID, ts2.URL+"/bigger.bin", nil)
 	if err == nil {
 		t.Fatal("expected size mismatch error")
 	}
