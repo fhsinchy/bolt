@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 html,
 body,
@@ -10,4 +11,12 @@ body,
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
+}
+
+/* Tell the browser to render form controls (selects, inputs, scrollbars)
+   with dark colors when the app is in dark mode. Without this, WebKitGTK
+   renders <select> dropdowns with light system colors even when CSS
+   dark:bg-* / dark:text-* is applied. */
+.dark {
+  color-scheme: dark;
 }
