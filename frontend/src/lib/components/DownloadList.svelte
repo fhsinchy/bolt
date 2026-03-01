@@ -1,8 +1,86 @@
 <script lang="ts">
-  import { getFilteredDownloads } from "../state/downloads.svelte";
+  import { getFilteredDownloads, getSearchQuery, getDownloads, reorderDownloads } from "../state/downloads.svelte";
   import DownloadRow from "./DownloadRow.svelte";
 
   const downloads = $derived(getFilteredDownloads());
+  const isSearching = $derived(!!getSearchQuery());
+
+  // Drag-and-drop state
+  let draggedId = $state<string | null>(null);
+  let dropTargetId = $state<string | null>(null);
+  let dropPosition = $state<"above" | "below">("below");
+
+  function handleDragStart(e: DragEvent, id: string) {
+    if (isSearching) {
+      e.preventDefault();
+      return;
+    }
+    draggedId = id;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", id);
+    }
+  }
+
+  function handleDragOver(e: DragEvent, id: string) {
+    if (!draggedId || draggedId === id || isSearching) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+    // Determine above/below based on mouse Y position within the row
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    dropPosition = e.clientY < midY ? "above" : "below";
+    dropTargetId = id;
+  }
+
+  function handleDragLeave(e: DragEvent, id: string) {
+    // Only clear if actually leaving this element (not entering a child)
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    if (dropTargetId === id) {
+      dropTargetId = null;
+    }
+  }
+
+  async function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    if (!draggedId || !dropTargetId || draggedId === dropTargetId || isSearching) {
+      draggedId = null;
+      dropTargetId = null;
+      return;
+    }
+
+    // Use the full (unfiltered) downloads list for reordering
+    const allDownloads = getDownloads();
+    const ids = allDownloads.map((d) => d.id);
+    const fromIdx = ids.indexOf(draggedId);
+    const toIdx = ids.indexOf(dropTargetId);
+    if (fromIdx === -1 || toIdx === -1) {
+      draggedId = null;
+      dropTargetId = null;
+      return;
+    }
+
+    // Remove dragged item and reinsert at target position
+    ids.splice(fromIdx, 1);
+    const insertIdx = ids.indexOf(dropTargetId);
+    if (dropPosition === "below") {
+      ids.splice(insertIdx + 1, 0, draggedId);
+    } else {
+      ids.splice(insertIdx, 0, draggedId);
+    }
+
+    draggedId = null;
+    dropTargetId = null;
+
+    await reorderDownloads(ids);
+  }
+
+  function handleDragEnd() {
+    draggedId = null;
+    dropTargetId = null;
+  }
 </script>
 
 {#if downloads.length === 0}
@@ -16,9 +94,19 @@
     <p class="text-sm mt-1">Click <strong>+</strong> to add one.</p>
   </div>
 {:else}
-  <div>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div ondrop={handleDrop} ondragend={handleDragEnd}>
     {#each downloads as download (download.id)}
-      <DownloadRow {download} />
+      <DownloadRow
+        {download}
+        isDragging={draggedId === download.id}
+        isDropTarget={dropTargetId === download.id}
+        {dropPosition}
+        draggable={!isSearching}
+        onDragStart={(e) => handleDragStart(e, download.id)}
+        onDragOver={(e) => handleDragOver(e, download.id)}
+        onDragLeave={(e) => handleDragLeave(e, download.id)}
+      />
     {/each}
   </div>
 {/if}

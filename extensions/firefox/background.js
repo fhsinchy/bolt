@@ -8,6 +8,10 @@ const DEFAULT_CONFIG = {
   serverUrl: 'http://127.0.0.1:9683',
   authToken: '',
   captureEnabled: true,
+  minFileSize: 0,           // bytes, 0=disabled
+  extensionWhitelist: [],   // e.g. ['.zip', '.iso']
+  extensionBlacklist: [],   // e.g. ['.exe']
+  domainBlocklist: [],      // e.g. ['ads.example.com']
 };
 
 // Domains to never intercept (local development, etc.)
@@ -118,7 +122,7 @@ async function refreshDownload(config, id, url, downloadHeaders) {
 
 // --- Filtering ---
 
-function shouldCapture(url) {
+function shouldCapture(url, config) {
   if (!url) return false;
 
   let parsed;
@@ -128,10 +132,10 @@ function shouldCapture(url) {
     return false;
   }
 
-  // Skip blocked domains
+  // Skip blocked domains (hardcoded, non-negotiable)
   if (BLOCKED_DOMAINS.includes(parsed.hostname)) return false;
 
-  // Skip blocked extensions
+  // Skip blocked extensions (hardcoded, non-negotiable)
   const path = parsed.pathname.toLowerCase();
   for (const ext of BLOCKED_EXTENSIONS) {
     if (path.endsWith(ext)) return false;
@@ -139,6 +143,32 @@ function shouldCapture(url) {
 
   // Skip data: and blob: URLs
   if (parsed.protocol === 'data:' || parsed.protocol === 'blob:') return false;
+
+  // User domain blocklist (with subdomain matching)
+  const domainBlocklist = config.domainBlocklist || [];
+  const hostname = parsed.hostname.toLowerCase();
+  for (const domain of domainBlocklist) {
+    if (hostname === domain || hostname.endsWith('.' + domain)) return false;
+  }
+
+  // User extension blacklist
+  const extBlacklist = config.extensionBlacklist || [];
+  for (const ext of extBlacklist) {
+    if (path.endsWith(ext)) return false;
+  }
+
+  // User extension whitelist (if non-empty, only capture matching extensions)
+  const extWhitelist = config.extensionWhitelist || [];
+  if (extWhitelist.length > 0) {
+    let matches = false;
+    for (const ext of extWhitelist) {
+      if (path.endsWith(ext)) {
+        matches = true;
+        break;
+      }
+    }
+    if (!matches) return false;
+  }
 
   return true;
 }
@@ -382,8 +412,14 @@ browser.downloads.onCreated.addListener(async (downloadItem) => {
   const config = await getConfig();
   if (!config.captureEnabled) return;
 
-  if (!shouldCapture(url)) {
+  if (!shouldCapture(url, config)) {
     log('Skipping (filtered):', url);
+    return;
+  }
+
+  // Min file size filter
+  if (config.minFileSize > 0 && downloadItem.totalBytes > 0 && downloadItem.totalBytes < config.minFileSize) {
+    log('Skipping (below min size):', url, downloadItem.totalBytes, '<', config.minFileSize);
     return;
   }
 

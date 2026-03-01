@@ -3,10 +3,11 @@
 
   interface Props {
     onAdd: () => void;
+    onBatchImport: () => void;
     onSettings: () => void;
   }
 
-  let { onAdd, onSettings }: Props = $props();
+  let { onAdd, onBatchImport, onSettings }: Props = $props();
 
   const app = (window as any).go.app.App;
 
@@ -59,6 +60,20 @@
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
     Add
+  </button>
+
+  <button
+    onclick={onBatchImport}
+    class="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+    title="Batch Import"
+    style="--wails-draggable: no-drag"
+  >
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+    Import
   </button>
 
   <button

@@ -272,6 +272,30 @@ func (s *Server) handleShowWindow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleReorderDownloads(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OrderedIDs []string `json:"ordered_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body", "VALIDATION_ERROR")
+		return
+	}
+
+	if len(body.OrderedIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ordered_ids is required", "VALIDATION_ERROR")
+		return
+	}
+
+	if err := s.store.ReorderDownloads(r.Context(), body.OrderedIDs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "reordered",
+	})
+}
+
 // mapEngineError maps engine sentinel errors to HTTP status codes.
 func mapEngineError(w http.ResponseWriter, err error) {
 	switch {

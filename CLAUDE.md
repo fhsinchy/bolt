@@ -115,6 +115,15 @@ Removed cross-platform code, updated all docs to reflect Linux-only targeting.
 - Added Steam Deck / Decky Plugin as Phase 9
 - Renumbered P1/P2/P3 feature phases to 6/7/8
 
+### Phase 6: Remaining P1 Features (COMPLETE)
+Four features for daily-driver readiness.
+
+**What was built:**
+- Extension filters + blocklist — user-configurable min file size, extension whitelist/blacklist, domain blocklist in popup; `shouldCapture(url, config)` with subdomain matching
+- Keyboard shortcuts — Ctrl+N (add), Ctrl+V (paste URL), Delete (remove selected), Space (toggle pause), Ctrl+A (select all), Ctrl+Q (quit); guards for dialogs/form focus
+- Batch URL import — `BatchImportDialog` with textarea/file import, sequential `AddDownload` calls with progress tracking; `SelectTextFile`/`ReadTextFile` IPC methods
+- Queue reordering (drag & drop) — `queue_order` column, `NextQueueOrder`/`ReorderDownloads` DB methods, `PUT /api/downloads/reorder` endpoint, HTML5 drag-and-drop in `DownloadList`/`DownloadRow` with grip handle
+
 ### Phase 9: Steam Deck + Decky Plugin (NOT STARTED)
 Decky Loader plugin (Python + React) as thin client to Bolt's REST API. QAM panel for Gaming Mode.
 
@@ -187,13 +196,14 @@ frontend/                  Svelte 5 + TypeScript + Vite + Tailwind
         downloads.svelte.ts  Reactive download state + event listeners
         config.svelte.ts     Config state (load/save)
       components/
-        Toolbar.svelte       Add, Pause All, Resume All, Clear, Settings
+        Toolbar.svelte       Add, Import, Pause All, Resume All, Clear, Settings
         SearchBar.svelte     Client-side filter
-        DownloadList.svelte  Scrollable download list
-        DownloadRow.svelte   Single download with progress + actions
+        DownloadList.svelte  Scrollable download list + drag-and-drop reordering
+        DownloadRow.svelte   Single download with progress + actions + drag handle
         ProgressBar.svelte   Progress bar (determinate + indeterminate)
         ActionButtons.svelte Per-download context actions
-        AddDownloadDialog.svelte  URL probe + download creation
+        AddDownloadDialog.svelte  URL probe + download creation (supports initialUrl prop)
+        BatchImportDialog.svelte  Batch URL import (paste/file) with progress
         SettingsDialog.svelte     Config editor
         StatusBar.svelte     Active/queued counts + total speed
 internal/
@@ -213,16 +223,16 @@ internal/
 extensions/
   chrome/                  Chrome browser extension (chrome.* API)
     manifest.json          MV3 manifest (service_worker, downloads.ui)
-    background.js          Service worker (interception, context menu, refresh)
+    background.js          Service worker (interception, context menu, refresh, user filters)
     content.js             Content script (link click interception)
-    popup/                 Config popup (with Save As warning banner)
+    popup/                 Config popup (with Save As warning banner + filters section)
     welcome/               First-install welcome page (2 steps)
     icons/                 Extension icons (16, 48, 128)
   firefox/                 Firefox browser extension (browser.* API)
     manifest.json          MV3 manifest (background scripts, menus, gecko settings)
-    background.js          Background script (no setUiOptions)
+    background.js          Background script (no setUiOptions, user filters)
     content.js             Content script (link click interception)
-    popup/                 Config popup (no Save As warning)
+    popup/                 Config popup (no Save As warning, filters section)
     welcome/               First-install welcome page (1 step, no JS)
     icons/                 Extension icons (16, 48, 128)
 images/

@@ -75,7 +75,7 @@ func (s *Store) ListDownloads(ctx context.Context, status string, limit, offset 
 		args = append(args, status)
 	}
 
-	query.WriteString(" ORDER BY created_at DESC")
+	query.WriteString(" ORDER BY queue_order ASC, created_at DESC")
 
 	if limit > 0 {
 		query.WriteString(" LIMIT ?")
@@ -198,6 +198,41 @@ func (s *Store) CountByStatus(ctx context.Context, status model.Status) (int, er
 		return 0, fmt.Errorf("count by status: %w", err)
 	}
 	return count, nil
+}
+
+// NextQueueOrder returns the next available queue_order value.
+func (s *Store) NextQueueOrder(ctx context.Context) (int, error) {
+	var order int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(queue_order), 0) + 1 FROM downloads`).Scan(&order)
+	if err != nil {
+		return 0, fmt.Errorf("next queue order: %w", err)
+	}
+	return order, nil
+}
+
+// ReorderDownloads updates the queue_order for the given download IDs.
+// The order of the IDs determines the new queue_order values (0-indexed).
+func (s *Store) ReorderDownloads(ctx context.Context, orderedIDs []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `UPDATE downloads SET queue_order = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare reorder: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, id := range orderedIDs {
+		if _, err := stmt.ExecContext(ctx, i, id); err != nil {
+			return fmt.Errorf("reorder download %s: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.

@@ -43,6 +43,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// REST routes (Go 1.22+ patterns)
 	mux.HandleFunc("POST /api/downloads", s.handleAddDownload)
 	mux.HandleFunc("GET /api/downloads", s.handleListDownloads)
+	mux.HandleFunc("PUT /api/downloads/reorder", s.handleReorderDownloads)
 	mux.HandleFunc("GET /api/downloads/{id}", s.handleGetDownload)
 	mux.HandleFunc("DELETE /api/downloads/{id}", s.handleDeleteDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/pause", s.handlePauseDownload)

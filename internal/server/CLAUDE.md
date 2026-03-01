@@ -24,6 +24,7 @@ HTTP server with REST API and WebSocket for real-time progress. Phase 2 core.
 | POST | `/api/downloads/{id}/resume` | Resume download |
 | POST | `/api/downloads/{id}/retry` | Retry failed download |
 | POST | `/api/downloads/{id}/refresh` | Refresh URL |
+| PUT | `/api/downloads/reorder` | Reorder queue |
 | GET | `/api/config` | Get config (sans auth token) |
 | PUT | `/api/config` | Update config |
 | GET | `/api/stats` | Get stats |

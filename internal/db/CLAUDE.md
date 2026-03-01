@@ -29,3 +29,6 @@ Version-based using `PRAGMA user_version`. Each migration runs in its own transa
 - Dates as `TEXT` via `datetime('now')`, parsed with `time.Parse("2006-01-02 15:04:05", ...)`
 - `BatchUpdateSegments` uses prepared statement in a transaction for efficiency (called every 2s during downloads)
 - `sql.ErrNoRows` → `model.ErrNotFound`; update/delete check `RowsAffected() == 0`
+- `NextQueueOrder` returns `MAX(queue_order)+1` for new downloads
+- `ReorderDownloads` sets `queue_order` by array index in a transaction
+- `ListDownloads` sorts by `queue_order ASC, created_at DESC`

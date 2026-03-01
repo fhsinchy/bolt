@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -169,6 +170,11 @@ func (a *App) CancelDownload(id string, deleteFile bool) error {
 // RetryDownload retries a failed download.
 func (a *App) RetryDownload(id string) error {
 	return a.engine.RetryDownload(context.Background(), id)
+}
+
+// ReorderDownloads updates the queue order of downloads.
+func (a *App) ReorderDownloads(orderedIDs []string) error {
+	return a.store.ReorderDownloads(context.Background(), orderedIDs)
 }
 
 // RefreshURL updates the URL for a failed download.
@@ -361,4 +367,24 @@ func (a *App) OpenFolder(path string) error {
 
 func openPath(path string) error {
 	return exec.Command("xdg-open", path).Start()
+}
+
+// SelectTextFile opens a native file picker filtered to text files.
+func (a *App) SelectTextFile() (string, error) {
+	return wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "Import URLs from Text File",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "Text Files", Pattern: "*.txt"},
+			{DisplayName: "All Files", Pattern: "*"},
+		},
+	})
+}
+
+// ReadTextFile reads a text file and returns its contents.
+func (a *App) ReadTextFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading file: %w", err)
+	}
+	return string(data), nil
 }

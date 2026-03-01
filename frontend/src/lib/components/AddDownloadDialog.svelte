@@ -1,18 +1,20 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { ProbeResult } from "../types";
   import { formatBytes } from "../utils/format";
   import { getConfig } from "../state/config.svelte";
 
   interface Props {
     onClose: () => void;
+    initialUrl?: string;
   }
 
-  let { onClose }: Props = $props();
+  let { onClose, initialUrl = "" }: Props = $props();
 
   const app = (window as any).go.app.App;
   const cfg = $derived(getConfig());
 
-  let url = $state("");
+  let url = $state(initialUrl);
   let filename = $state("");
   let dir = $state("");
   let segments = $state(16);
@@ -27,6 +29,12 @@
     if (cfg && !dir) {
       dir = cfg.download_dir;
       segments = cfg.default_segments;
+    }
+  });
+
+  onMount(() => {
+    if (initialUrl) {
+      probe();
     }
   });
 

@@ -65,6 +65,27 @@ export function clearSelection() {
   selectedIds = new Set();
 }
 
+export function selectAllDownloads() {
+  selectedIds = new Set(downloads.map(d => d.id));
+}
+
+export async function reorderDownloads(orderedIds: string[]) {
+  // Optimistic: reorder local array to match
+  const idOrder = new Map(orderedIds.map((id, i) => [id, i]));
+  downloads = [...downloads].sort((a, b) => {
+    const ai = idOrder.get(a.id) ?? Infinity;
+    const bi = idOrder.get(b.id) ?? Infinity;
+    return ai - bi;
+  });
+
+  try {
+    await (window as any).go.app.App.ReorderDownloads(orderedIds);
+  } catch (e) {
+    console.error("Reorder failed:", e);
+    await loadDownloads();
+  }
+}
+
 export async function loadDownloads() {
   try {
     const result = await (window as any).go.app.App.ListDownloads("", 0, 0);

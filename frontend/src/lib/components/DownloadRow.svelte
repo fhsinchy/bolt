@@ -7,9 +7,25 @@
 
   interface Props {
     download: Download;
+    isDragging?: boolean;
+    isDropTarget?: boolean;
+    dropPosition?: "above" | "below";
+    draggable?: boolean;
+    onDragStart?: (e: DragEvent) => void;
+    onDragOver?: (e: DragEvent) => void;
+    onDragLeave?: (e: DragEvent) => void;
   }
 
-  let { download }: Props = $props();
+  let {
+    download,
+    isDragging = false,
+    isDropTarget = false,
+    dropPosition = "below",
+    draggable = false,
+    onDragStart,
+    onDragOver,
+    onDragLeave,
+  }: Props = $props();
 
   const selected = $derived(getSelectedIds().has(download.id));
 
@@ -78,16 +94,37 @@
   });
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-default transition-colors {selected
-    ? 'bg-blue-50 dark:bg-blue-900/30'
-    : ''}"
+  class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-default transition-colors
+    {selected ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
+    {isDragging ? 'opacity-40' : ''}
+    {isDropTarget && dropPosition === 'above' ? 'border-t-2 border-t-blue-500' : ''}
+    {isDropTarget && dropPosition === 'below' ? 'border-b-2 border-b-blue-500' : ''}"
   role="button"
   tabindex="0"
+  draggable={draggable}
   onclick={handleClick}
   ondblclick={handleDblClick}
   onkeydown={(e) => e.key === "Enter" && handleClick()}
+  ondragstart={onDragStart}
+  ondragover={onDragOver}
+  ondragleave={onDragLeave}
 >
+  <!-- Drag handle -->
+  {#if draggable}
+    <span class="flex-shrink-0 text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="9" cy="5" r="1.5" />
+        <circle cx="15" cy="5" r="1.5" />
+        <circle cx="9" cy="12" r="1.5" />
+        <circle cx="15" cy="12" r="1.5" />
+        <circle cx="9" cy="19" r="1.5" />
+        <circle cx="15" cy="19" r="1.5" />
+      </svg>
+    </span>
+  {/if}
+
   <!-- File icon -->
   <span class="text-lg w-6 text-center flex-shrink-0">{fileIcon}</span>
 

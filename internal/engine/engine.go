@@ -148,6 +148,12 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		}
 	}
 
+	// Get next queue order so new downloads appear at the bottom
+	queueOrder, err := e.store.NextQueueOrder(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting queue order: %w", err)
+	}
+
 	// Generate ID
 	id := model.NewDownloadID()
 
@@ -167,6 +173,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		ETag:         probeResult.ETag,
 		LastModified: probeResult.LastModified,
 		CreatedAt:    time.Now(),
+		QueueOrder:   queueOrder,
 	}
 
 	if err := e.store.InsertDownload(ctx, dl); err != nil {

@@ -13,7 +13,7 @@
 | Phase 3 — Wails GUI + Frontend | **COMPLETE** | 100% |
 | Phase 4 — Browser Extension | **COMPLETE** | 100% |
 | Phase 5 — Linux-Only Focus Shift | **COMPLETE** | 100% |
-| Phase 6 — P1 Features | **IN PROGRESS** | ~60% |
+| Phase 6 — P1 Features | **COMPLETE** | 100% |
 | Phase 7 — P2 Features | **NOT STARTED** | ~5% (config fields only) |
 | Phase 8 — P3 Features | **NOT STARTED** | ~5% (config fields only) |
 | Phase 9 — Steam Deck + Decky Plugin | **NOT STARTED** | 0% |
@@ -120,14 +120,14 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 | Speed limiter (global) | Done — `golang.org/x/time/rate`, shared limiter across all segments, configurable in Settings |
 | Duplicate URL detection | Done (`ErrDuplicateURL`, 409 Conflict) |
 | Dark/light theme | Done — class-based toggle (system/light/dark), all components styled |
-| Keyboard shortcuts | Partial — Enter to probe, Escape to close dialogs; no global shortcuts |
-| Queue reordering (drag & drop) | Not implemented (`queue_order` model field exists, unused) |
+| Keyboard shortcuts | Done — Ctrl+N/V/A/Q, Delete, Space; dialog/focus guards |
+| Queue reordering (drag & drop) | Done — `queue_order` DB column, `PUT /api/downloads/reorder`, HTML5 DnD in frontend |
 | Desktop notifications | Done — `internal/notify/` (`notify-send`) |
-| Batch URL import | Not implemented |
+| Batch URL import | Done — `BatchImportDialog`, paste/file import, `SelectTextFile`/`ReadTextFile` IPC |
 | Search/filter in download list | Done — `SearchBar` with client-side text filtering |
 | Extension popup | Done (`extensions/chrome/popup/`, `extensions/firefox/popup/`) |
-| Extension file/size filters | Partial — file extension filtering (30+ types); no user-configurable size filter |
-| Extension domain blocklist | Partial — hardcoded blocklist (localhost); not user-configurable |
+| Extension file/size filters | Done — hardcoded + user-configurable min file size, extension whitelist/blacklist in popup |
+| Extension domain blocklist | Done — hardcoded blocklist + user-configurable domain blocklist with subdomain matching |
 
 ## P2 Feature Status
 
