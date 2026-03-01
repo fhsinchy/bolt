@@ -56,9 +56,5 @@ func formatCompleted(filename string) string {
 }
 
 func formatFailed(downloadID, errMsg string) string {
-	id := downloadID
-	if len(id) > 12 {
-		id = id[:12]
-	}
-	return fmt.Sprintf("\nDownload %s failed: %s\n", id, errMsg)
+	return fmt.Sprintf("\nDownload %s failed: %s\n", downloadID, errMsg)
 }

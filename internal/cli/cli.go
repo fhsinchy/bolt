@@ -136,10 +136,6 @@ func (c *Client) List(ctx context.Context, opts ListOptions) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tFILENAME\tSIZE\tPROGRESS\tSTATUS")
 	for _, dl := range result.Downloads {
-		id := dl.ID
-		if len(id) > 12 {
-			id = id[:12]
-		}
 		filename := dl.Filename
 		if len(filename) > 30 {
 			filename = filename[:27] + "..."
@@ -154,7 +150,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) error {
 		}
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			id, filename, model.FormatBytes(dl.TotalSize), progress, dl.Status)
+			dl.ID, filename, model.FormatBytes(dl.TotalSize), progress, dl.Status)
 	}
 	w.Flush()
 	return nil
