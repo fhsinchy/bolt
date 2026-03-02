@@ -43,6 +43,8 @@
         return { text: "Paused", class: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" };
       case "refresh":
         return { text: "Refresh", class: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" };
+      case "verifying":
+        return { text: "Verifying...", class: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" };
       default:
         return { text: download.status, class: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" };
     }

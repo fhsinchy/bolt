@@ -4,7 +4,8 @@ export type Status =
   | "paused"
   | "completed"
   | "error"
-  | "refresh";
+  | "refresh"
+  | "verifying";
 
 export interface Download {
   id: string;

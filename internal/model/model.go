@@ -11,6 +11,7 @@ const (
 	StatusCompleted Status = "completed"
 	StatusError     Status = "error"
 	StatusRefresh   Status = "refresh"
+	StatusVerifying Status = "verifying"
 )
 
 type Download struct {

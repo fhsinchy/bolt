@@ -293,11 +293,20 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 		file.Close()
 
 		if agg.AllDone() {
-			_ = e.store.SetCompleted(context.Background(), dl.ID)
-			e.bus.Publish(event.DownloadCompleted{
-				DownloadID: dl.ID,
-				Filename:   dl.Filename,
-			})
+			filePath := filepath.Join(dl.Dir, dl.Filename)
+			if dl.Checksum != nil {
+				_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusVerifying, "")
+				if err := verifyChecksum(filePath, dl.Checksum); err != nil {
+					_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, err.Error())
+					e.bus.Publish(event.DownloadFailed{DownloadID: dl.ID, Error: err.Error()})
+				} else {
+					_ = e.store.SetCompleted(context.Background(), dl.ID)
+					e.bus.Publish(event.DownloadCompleted{DownloadID: dl.ID, Filename: dl.Filename})
+				}
+			} else {
+				_ = e.store.SetCompleted(context.Background(), dl.ID)
+				e.bus.Publish(event.DownloadCompleted{DownloadID: dl.ID, Filename: dl.Filename})
+			}
 		} else if agg.Err() != nil {
 			_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, agg.Err().Error())
 			e.bus.Publish(event.DownloadFailed{

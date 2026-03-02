@@ -23,6 +23,9 @@
   let probeError = $state("");
   let submitting = $state(false);
   let submitError = $state("");
+  let checksumOpen = $state(false);
+  let checksumAlgo = $state("sha256");
+  let checksumValue = $state("");
 
   // Initialize dir from config
   $effect(() => {
@@ -88,7 +91,9 @@
         headers: {},
         referer_url: "",
         speed_limit: 0,
-        checksum: null,
+        checksum: checksumValue.trim()
+          ? { algorithm: checksumAlgo, value: checksumValue.trim() }
+          : null,
       });
       onClose();
     } catch (e: any) {
@@ -202,6 +207,49 @@
           max="32"
           class="w-full"
         />
+      </div>
+
+      <!-- Checksum (optional, collapsible) -->
+      <div>
+        <button
+          type="button"
+          onclick={() => (checksumOpen = !checksumOpen)}
+          class="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+        >
+          <svg
+            class="w-3.5 h-3.5 transition-transform {checksumOpen ? 'rotate-90' : ''}"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          Checksum (optional)
+        </button>
+
+        {#if checksumOpen}
+          <div class="mt-2 space-y-2">
+            <div class="flex gap-2">
+              <select
+                bind:value={checksumAlgo}
+                class="px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="md5">MD5</option>
+                <option value="sha1">SHA-1</option>
+                <option value="sha256">SHA-256</option>
+                <option value="sha512">SHA-512</option>
+              </select>
+              <input
+                type="text"
+                bind:value={checksumValue}
+                placeholder="Paste hash here"
+                class="flex-1 px-3 py-1.5 text-sm font-mono border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500">File will be verified after download completes.</p>
+          </div>
+        {/if}
       </div>
 
       {#if submitError}
