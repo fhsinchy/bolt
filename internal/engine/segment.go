@@ -66,6 +66,13 @@ func (w *segmentWorker) Run(ctx context.Context) error {
 		return &httpError{StatusCode: resp.StatusCode}
 	}
 
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(strings.ToLower(ct), "text/html") {
+		fn := strings.ToLower(w.download.Filename)
+		if !strings.HasSuffix(fn, ".html") && !strings.HasSuffix(fn, ".htm") {
+			return &contentTypeError{ContentType: ct}
+		}
+	}
+
 	buf := make([]byte, readBufSize)
 	var reader io.Reader = resp.Body
 
@@ -162,6 +169,14 @@ func (e *httpError) Error() string {
 	return fmt.Sprintf("HTTP %d", e.StatusCode)
 }
 
+type contentTypeError struct {
+	ContentType string
+}
+
+func (e *contentTypeError) Error() string {
+	return fmt.Sprintf("server returned HTML (%s) — URL may require authentication or the file does not exist", e.ContentType)
+}
+
 func isPermanentError(err error) bool {
 	var httpErr *httpError
 	if errors.As(err, &httpErr) {
@@ -197,6 +212,11 @@ func isPermanentError(err error) bool {
 	// Connection reset / broken pipe
 	if isConnectionReset(err) {
 		return false
+	}
+
+	var ctErr *contentTypeError
+	if errors.As(err, &ctErr) {
+		return true
 	}
 
 	// Default: treat unknown errors as transient to allow retry
