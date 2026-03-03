@@ -163,9 +163,7 @@ frontend/           Svelte 5 + TypeScript + Tailwind CSS
 | 4. Browser Extension | Chrome + Firefox download interception | Complete |
 | 5. Linux-Only Shift | Remove cross-platform code, update docs, Linux-only focus | Complete |
 | 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import, download details | Complete |
-| 7. P2 Features | Extension options page, CLI `--json` output | Planned |
-| 8. P3 Features | Proxy support, file categorization | Planned |
-| 9. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
+| 7. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
 
 See `STATUS.md` for detailed per-feature status.
 

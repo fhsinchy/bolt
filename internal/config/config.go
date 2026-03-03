@@ -11,19 +11,16 @@ import (
 
 // Config holds all user-configurable settings for the Bolt download manager.
 type Config struct {
-	DownloadDir      string              `json:"download_dir"`
-	Categorize       bool                `json:"categorize"`
-	MaxConcurrent    int                 `json:"max_concurrent"`
-	DefaultSegments  int                 `json:"default_segments"`
-	GlobalSpeedLimit int64               `json:"global_speed_limit"`
-	ServerPort       int                 `json:"server_port"`
-	AuthToken        string              `json:"auth_token"`
-	MinimizeToTray   bool                `json:"minimize_to_tray"`
-	Theme            string              `json:"theme"`
-	Proxy            string              `json:"proxy"`
-	MaxRetries       int                 `json:"max_retries"`
-	MinSegmentSize   int64               `json:"min_segment_size"`
-	Categories       map[string][]string `json:"categories"`
+	DownloadDir      string `json:"download_dir"`
+	MaxConcurrent    int    `json:"max_concurrent"`
+	DefaultSegments  int    `json:"default_segments"`
+	GlobalSpeedLimit int64  `json:"global_speed_limit"`
+	ServerPort       int    `json:"server_port"`
+	AuthToken        string `json:"auth_token"`
+	MinimizeToTray   bool   `json:"minimize_to_tray"`
+	Theme            string `json:"theme"`
+	MaxRetries       int    `json:"max_retries"`
+	MinSegmentSize   int64  `json:"min_segment_size"`
 }
 
 // Dir returns the Bolt configuration directory, creating it if it does not
@@ -47,7 +44,6 @@ func DefaultPath() string {
 func DefaultConfig() *Config {
 	return &Config{
 		DownloadDir:      defaultDownloadDir(),
-		Categorize:       false,
 		MaxConcurrent:    3,
 		DefaultSegments:  16,
 		GlobalSpeedLimit: 0,
@@ -55,19 +51,8 @@ func DefaultConfig() *Config {
 		AuthToken:        generateToken(),
 		MinimizeToTray:   true,
 		Theme:            "system",
-		Proxy:            "",
 		MaxRetries:       10,
 		MinSegmentSize:   1048576, // 1 MB
-		Categories: map[string][]string{
-			"Documents":   {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".odt", ".ods", ".odp"},
-			"Images":      {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff"},
-			"Audio":       {".mp3", ".flac", ".wav", ".aac", ".ogg", ".wma", ".m4a"},
-			"Video":       {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"},
-			"Archives":    {".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar", ".zst"},
-			"Programs":    {".exe", ".msi", ".dmg", ".deb", ".rpm", ".appimage", ".snap", ".flatpak"},
-			"Torrents":    {".torrent"},
-			"ISO":         {".iso", ".img"},
-		},
 	}
 }
 

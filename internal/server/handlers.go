@@ -144,35 +144,27 @@ func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	// Return config without the auth token.
 	type safeConfig struct {
-		DownloadDir      string              `json:"download_dir"`
-		Categorize       bool                `json:"categorize"`
-		MaxConcurrent    int                 `json:"max_concurrent"`
-		DefaultSegments  int                 `json:"default_segments"`
-		GlobalSpeedLimit int64               `json:"global_speed_limit"`
-		ServerPort       int                 `json:"server_port"`
-		MinimizeToTray   bool                `json:"minimize_to_tray"`
-		ClipboardMonitor bool                `json:"clipboard_monitor"`
-		SoundOnComplete  bool                `json:"sound_on_complete"`
-		Theme            string              `json:"theme"`
-		Proxy            string              `json:"proxy"`
-		MaxRetries       int                 `json:"max_retries"`
-		MinSegmentSize   int64               `json:"min_segment_size"`
-		Categories       map[string][]string `json:"categories"`
+		DownloadDir      string `json:"download_dir"`
+		MaxConcurrent    int    `json:"max_concurrent"`
+		DefaultSegments  int    `json:"default_segments"`
+		GlobalSpeedLimit int64  `json:"global_speed_limit"`
+		ServerPort       int    `json:"server_port"`
+		MinimizeToTray   bool   `json:"minimize_to_tray"`
+		Theme            string `json:"theme"`
+		MaxRetries       int    `json:"max_retries"`
+		MinSegmentSize   int64  `json:"min_segment_size"`
 	}
 
 	writeJSON(w, http.StatusOK, safeConfig{
 		DownloadDir:      s.cfg.DownloadDir,
-		Categorize:       s.cfg.Categorize,
 		MaxConcurrent:    s.cfg.MaxConcurrent,
 		DefaultSegments:  s.cfg.DefaultSegments,
 		GlobalSpeedLimit: s.cfg.GlobalSpeedLimit,
 		ServerPort:       s.cfg.ServerPort,
 		MinimizeToTray:   s.cfg.MinimizeToTray,
 		Theme:            s.cfg.Theme,
-		Proxy:            s.cfg.Proxy,
 		MaxRetries:       s.cfg.MaxRetries,
 		MinSegmentSize:   s.cfg.MinSegmentSize,
-		Categories:       s.cfg.Categories,
 	})
 }
 

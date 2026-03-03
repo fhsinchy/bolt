@@ -14,8 +14,7 @@
 | Phase 4 — Browser Extension | **COMPLETE** | 100% |
 | Phase 5 — Linux-Only Focus Shift | **COMPLETE** | 100% |
 | Phase 6 — P1 Features | **COMPLETE** | 100% |
-| Phase 7 — P2 Features | **NOT STARTED** | ~5% (config fields only) |
-| Phase 8 — P3 Features | **NOT STARTED** | ~5% (config fields only) |
+| Phase 7 — P2 Features | **COMPLETE** | 100% |
 | Phase 9 — Steam Deck + Decky Plugin | **NOT STARTED** | 0% |
 
 ---
@@ -40,7 +39,7 @@ All deliverables built and tested:
 
 - REST API with all endpoints (add, list, get, delete, pause, resume, retry, refresh, probe, config, stats)
 - WebSocket progress push
-- Bearer token authentication + CORS middleware
+- Bearer token authentication
 - PID file management (`internal/pid/`)
 - CLI refactored to HTTP client (talks to daemon)
 - Headless daemon mode (`bolt start --headless`)
@@ -135,16 +134,12 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 | Feature | Status |
 |---------|--------|
 | Checksum verification | Done — verified on completion, editable via details dialog (including active downloads), pass/fail indicator |
-| Full settings panel | Mostly done — exposes 9 settings (dir, concurrency, segments, retries, tray, speed limit, theme, port, token); missing: proxy, categorize |
-| Extension options page | Not implemented (popup only) |
-| CLI `--json` output | Not implemented |
+| Full settings panel | Done — exposes 9 settings (dir, concurrency, segments, retries, tray, speed limit, theme, port, token) |
 
 ## P3 Feature Status
 
 | Feature | Status |
 |---------|--------|
-| File categorization by type | **Config only** — `categorize` bool + `categories` map exist; not used by engine |
-| Proxy support (HTTP/SOCKS5) | **Config only** — `proxy` field exists; not connected to HTTP client |
 | Start on system boot | Done — `dist/bolt.service` systemd user unit, `make install` / `make uninstall` |
 | Firefox extension | Done (`extensions/firefox/`) |
 

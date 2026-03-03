@@ -32,23 +32,14 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Theme != "system" {
 		t.Errorf("Theme = %q, want %q", cfg.Theme, "system")
 	}
-	if cfg.Proxy != "" {
-		t.Errorf("Proxy = %q, want empty", cfg.Proxy)
-	}
 	if cfg.MaxRetries != 10 {
 		t.Errorf("MaxRetries = %d, want 10", cfg.MaxRetries)
 	}
 	if cfg.MinSegmentSize != 1048576 {
 		t.Errorf("MinSegmentSize = %d, want 1048576", cfg.MinSegmentSize)
 	}
-	if cfg.Categorize != false {
-		t.Error("Categorize = true, want false")
-	}
 	if cfg.DownloadDir == "" {
 		t.Error("DownloadDir is empty")
-	}
-	if len(cfg.Categories) == 0 {
-		t.Error("Categories map is empty")
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("DefaultConfig failed validation: %v", err)
@@ -174,8 +165,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	original.Theme = "dark"
 	original.MaxRetries = 50
 	original.MinSegmentSize = 131072 // 128KB
-	original.Proxy = "socks5://127.0.0.1:1080"
-	original.Categorize = true
 	original.MinimizeToTray = false
 	original.GlobalSpeedLimit = 1048576
 
@@ -206,14 +195,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	if loaded.MinSegmentSize != original.MinSegmentSize {
 		t.Errorf("MinSegmentSize = %d, want %d", loaded.MinSegmentSize, original.MinSegmentSize)
 	}
-	if loaded.Proxy != original.Proxy {
-		t.Errorf("Proxy = %q, want %q", loaded.Proxy, original.Proxy)
-	}
 	if loaded.AuthToken != original.AuthToken {
 		t.Errorf("AuthToken = %q, want %q", loaded.AuthToken, original.AuthToken)
-	}
-	if loaded.Categorize != original.Categorize {
-		t.Errorf("Categorize = %v, want %v", loaded.Categorize, original.Categorize)
 	}
 	if loaded.MinimizeToTray != original.MinimizeToTray {
 		t.Errorf("MinimizeToTray = %v, want %v", loaded.MinimizeToTray, original.MinimizeToTray)

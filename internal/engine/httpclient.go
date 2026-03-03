@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
 	"time"
 
 	"golang.org/x/net/publicsuffix"
@@ -20,13 +19,6 @@ func newHTTPClient(cfg *config.Config) *http.Client {
 		ResponseHeaderTimeout: 15 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 		DisableCompression:    true,
-	}
-
-	if cfg.Proxy != "" {
-		proxyURL, err := url.Parse(cfg.Proxy)
-		if err == nil {
-			transport.Proxy = http.ProxyURL(proxyURL)
-		}
 	}
 
 	jar, _ := cookiejar.New(&cookiejar.Options{

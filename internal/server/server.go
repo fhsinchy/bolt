@@ -57,8 +57,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/window/show", s.handleShowWindow)
 	mux.HandleFunc("GET /ws", s.handleWebSocket)
 
-	// Apply middleware chain: recovery -> logging -> cors -> auth
-	handler := s.recovery(s.logging(s.cors(s.auth(mux))))
+	// Apply middleware chain: recovery -> logging -> auth
+	handler := s.recovery(s.logging(s.auth(mux)))
 
 	addr := fmt.Sprintf("127.0.0.1:%d", s.cfg.ServerPort)
 

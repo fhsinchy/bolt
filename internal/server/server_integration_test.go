@@ -107,7 +107,7 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	mux.HandleFunc("POST /api/probe", srv.handleProbe)
 	mux.HandleFunc("GET /ws", srv.handleWebSocket)
 
-	handler := srv.recovery(srv.logging(srv.cors(srv.auth(mux))))
+	handler := srv.recovery(srv.logging(srv.auth(mux)))
 
 	// Listen on a random port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -293,37 +293,6 @@ func TestIntegration_NotFound(t *testing.T) {
 	}
 	if code, ok := resp["code"].(string); !ok || code != "NOT_FOUND" {
 		t.Fatalf("expected code NOT_FOUND, got %v", resp["code"])
-	}
-}
-
-func TestIntegration_CORSPreflight(t *testing.T) {
-	ie := startIntegrationServer(t)
-
-	// OPTIONS requests bypass auth, so we send with no auth header.
-	req, err := http.NewRequest("OPTIONS", ie.baseURL+"/api/downloads", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.Header.Set("Origin", "http://example.com")
-	req.Header.Set("Access-Control-Request-Method", "POST")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", resp.StatusCode)
-	}
-	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("expected Access-Control-Allow-Origin *, got %q", got)
-	}
-	if got := resp.Header.Get("Access-Control-Allow-Methods"); got == "" {
-		t.Fatal("missing Access-Control-Allow-Methods header")
-	}
-	if got := resp.Header.Get("Access-Control-Allow-Headers"); got == "" {
-		t.Fatal("missing Access-Control-Allow-Headers header")
 	}
 }
 

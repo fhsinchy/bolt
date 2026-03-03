@@ -82,7 +82,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	mux.HandleFunc("POST /api/probe", srv.handleProbe)
 	mux.HandleFunc("GET /ws", srv.handleWebSocket)
 
-	handler := srv.recovery(srv.logging(srv.cors(srv.auth(mux))))
+	handler := srv.recovery(srv.logging(srv.auth(mux)))
 
 	return &testEnv{
 		cfg:        cfg,
@@ -132,20 +132,6 @@ func TestAuth_CorrectToken(t *testing.T) {
 	rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-}
-
-func TestCORS_Preflight(t *testing.T) {
-	te := newTestEnv(t)
-	req := httptest.NewRequest("OPTIONS", "/api/stats", nil)
-	rr := httptest.NewRecorder()
-	te.handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rr.Code)
-	}
-	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("expected ACAO *, got %q", got)
 	}
 }
 

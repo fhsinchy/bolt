@@ -9,7 +9,7 @@ HTTP server with REST API and WebSocket for real-time progress. Phase 2 core.
 | `server.go` | Server struct, Start/Shutdown, route registration, JSON helpers |
 | `handlers.go` | REST endpoint handlers |
 | `websocket.go` | WebSocket handler + event-to-message conversion |
-| `middleware.go` | recovery, logging, CORS, auth middleware |
+| `middleware.go` | recovery, logging, auth middleware |
 | `server_test.go` | Tests using httptest |
 
 ## Routes
@@ -38,7 +38,7 @@ HTTP server with REST API and WebSocket for real-time progress. Phase 2 core.
 
 ## Middleware Chain
 
-recovery -> logging -> CORS -> auth
+recovery -> logging -> auth
 
 ## WebSocket Messages
 
