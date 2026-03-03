@@ -13,12 +13,15 @@
 - **Auto-retry** — per-segment exponential backoff for transient failures
 - **Download queue** — configurable max concurrent downloads with FIFO scheduling
 - **Speed limiter** — global rate limiting across all active segments
+- **Keyboard shortcuts** — Ctrl+N (add), Ctrl+V (paste URL), Delete (remove), Space (pause/resume), Ctrl+A (select all), Ctrl+Q (quit)
+- **Batch URL import** — paste or load a text file of URLs, queued sequentially with per-URL progress
+- **Queue reordering** — drag and drop to reprioritize pending downloads
 - **Dead link refresh** — automatic URL renewal for expired CDN links
 - **Dark theme** — system, light, and dark modes with live switching
 - **Checksum verification** — SHA-256, SHA-512, SHA-1, MD5; set before or during download, verified on completion
 - **Download details** — per-segment progress, URL refresh, checksum editing, full metadata view
 - **Desktop notifications** — completion and failure alerts via native OS notifications
-- **Browser extensions** — Chrome and Firefox extensions intercept downloads and send them to Bolt
+- **Browser extensions** — Chrome and Firefox extensions intercept downloads, with configurable file size limits, extension filters, and domain blocklist
 - **REST API** — full CRUD over HTTP for scripting and extension integration
 - **WebSocket** — real-time progress push
 - **System tray** — minimize to tray, background operation
@@ -160,8 +163,8 @@ frontend/           Svelte 5 + TypeScript + Tailwind CSS
 | 4. Browser Extension | Chrome + Firefox download interception | Complete |
 | 5. Linux-Only Shift | Remove cross-platform code, update docs, Linux-only focus | Complete |
 | 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import, download details | Complete |
-| 7. P2 Features | Download scheduling, clipboard monitoring | Planned |
-| 8. P3 Features | Proxy support, file categorization, auto-shutdown | Planned |
+| 7. P2 Features | Extension options page, CLI `--json` output | Planned |
+| 8. P3 Features | Proxy support, file categorization | Planned |
 | 9. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
 
 See `STATUS.md` for detailed per-feature status.

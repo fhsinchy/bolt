@@ -29,12 +29,6 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.MinimizeToTray != true {
 		t.Error("MinimizeToTray = false, want true")
 	}
-	if cfg.ClipboardMonitor != false {
-		t.Error("ClipboardMonitor = true, want false")
-	}
-	if cfg.SoundOnComplete != true {
-		t.Error("SoundOnComplete = false, want true")
-	}
 	if cfg.Theme != "system" {
 		t.Errorf("Theme = %q, want %q", cfg.Theme, "system")
 	}
@@ -182,8 +176,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	original.MinSegmentSize = 131072 // 128KB
 	original.Proxy = "socks5://127.0.0.1:1080"
 	original.Categorize = true
-	original.ClipboardMonitor = true
-	original.SoundOnComplete = false
 	original.MinimizeToTray = false
 	original.GlobalSpeedLimit = 1048576
 
@@ -222,12 +214,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	}
 	if loaded.Categorize != original.Categorize {
 		t.Errorf("Categorize = %v, want %v", loaded.Categorize, original.Categorize)
-	}
-	if loaded.ClipboardMonitor != original.ClipboardMonitor {
-		t.Errorf("ClipboardMonitor = %v, want %v", loaded.ClipboardMonitor, original.ClipboardMonitor)
-	}
-	if loaded.SoundOnComplete != original.SoundOnComplete {
-		t.Errorf("SoundOnComplete = %v, want %v", loaded.SoundOnComplete, original.SoundOnComplete)
 	}
 	if loaded.MinimizeToTray != original.MinimizeToTray {
 		t.Errorf("MinimizeToTray = %v, want %v", loaded.MinimizeToTray, original.MinimizeToTray)

@@ -19,8 +19,6 @@ type Config struct {
 	ServerPort       int                 `json:"server_port"`
 	AuthToken        string              `json:"auth_token"`
 	MinimizeToTray   bool                `json:"minimize_to_tray"`
-	ClipboardMonitor bool                `json:"clipboard_monitor"`
-	SoundOnComplete  bool                `json:"sound_on_complete"`
 	Theme            string              `json:"theme"`
 	Proxy            string              `json:"proxy"`
 	MaxRetries       int                 `json:"max_retries"`
@@ -56,8 +54,6 @@ func DefaultConfig() *Config {
 		ServerPort:       9683,
 		AuthToken:        generateToken(),
 		MinimizeToTray:   true,
-		ClipboardMonitor: false,
-		SoundOnComplete:  true,
 		Theme:            "system",
 		Proxy:            "",
 		MaxRetries:       10,

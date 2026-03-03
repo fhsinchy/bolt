@@ -14,7 +14,8 @@
   const app = (window as any).go.app.App;
   const cfg = $derived(getConfig());
 
-  let url = $state(initialUrl);
+  let url = $state("");
+  $effect(() => { url = initialUrl; });
   let filename = $state("");
   let dir = $state("");
   let segments = $state(16);

@@ -135,10 +135,7 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 | Feature | Status |
 |---------|--------|
 | Checksum verification | Done — verified on completion, editable via details dialog (including active downloads), pass/fail indicator |
-| Download scheduling | Not implemented |
-| Clipboard monitoring | **Config only** — `clipboard_monitor` field exists; not wired |
 | Full settings panel | Mostly done — exposes 9 settings (dir, concurrency, segments, retries, tray, speed limit, theme, port, token); missing: proxy, categorize |
-| Sound on completion | **Config only** — `sound_on_complete` field exists; not wired |
 | Extension options page | Not implemented (popup only) |
 | CLI `--json` output | Not implemented |
 
@@ -148,7 +145,6 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 |---------|--------|
 | File categorization by type | **Config only** — `categorize` bool + `categories` map exist; not used by engine |
 | Proxy support (HTTP/SOCKS5) | **Config only** — `proxy` field exists; not connected to HTTP client |
-| Auto-shutdown/sleep | Not implemented |
 | Start on system boot | Done — `dist/bolt.service` systemd user unit, `make install` / `make uninstall` |
 | Firefox extension | Done (`extensions/firefox/`) |
 

@@ -60,6 +60,14 @@
       console.error("Open folder failed:", e);
     }
   }
+
+  async function remove() {
+    try {
+      await app.CancelDownload(download.id, false);
+    } catch (e) {
+      console.error("Remove failed:", e);
+    }
+  }
 </script>
 
 <div class="flex items-center gap-1">
@@ -134,6 +142,19 @@
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
+    <button
+      onclick={remove}
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+      title="Remove from list"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+        <path d="M9 6V4h6v2" />
       </svg>
     </button>
   {/if}

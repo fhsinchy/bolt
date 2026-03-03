@@ -168,8 +168,6 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		GlobalSpeedLimit: s.cfg.GlobalSpeedLimit,
 		ServerPort:       s.cfg.ServerPort,
 		MinimizeToTray:   s.cfg.MinimizeToTray,
-		ClipboardMonitor: s.cfg.ClipboardMonitor,
-		SoundOnComplete:  s.cfg.SoundOnComplete,
 		Theme:            s.cfg.Theme,
 		Proxy:            s.cfg.Proxy,
 		MaxRetries:       s.cfg.MaxRetries,
