@@ -597,6 +597,59 @@ func TestConcurrentWrites(t *testing.T) {
 	}
 }
 
+func TestUpdateDownloadChecksum(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	d := newTestDownload("d_updchk001")
+	d.Checksum = nil
+
+	if err := store.InsertDownload(ctx, d); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Set checksum
+	cs := &model.Checksum{Algorithm: "sha256", Value: "deadbeef"}
+	if err := store.UpdateDownloadChecksum(ctx, "d_updchk001", cs); err != nil {
+		t.Fatalf("update checksum: %v", err)
+	}
+
+	got, err := store.GetDownload(ctx, "d_updchk001")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Checksum == nil {
+		t.Fatal("Checksum is nil after update")
+	}
+	if got.Checksum.Algorithm != "sha256" {
+		t.Errorf("Algorithm = %q, want sha256", got.Checksum.Algorithm)
+	}
+	if got.Checksum.Value != "deadbeef" {
+		t.Errorf("Value = %q, want deadbeef", got.Checksum.Value)
+	}
+
+	// Clear checksum
+	if err := store.UpdateDownloadChecksum(ctx, "d_updchk001", nil); err != nil {
+		t.Fatalf("clear checksum: %v", err)
+	}
+	got, err = store.GetDownload(ctx, "d_updchk001")
+	if err != nil {
+		t.Fatalf("get after clear: %v", err)
+	}
+	if got.Checksum != nil {
+		t.Errorf("Checksum = %+v after clear, want nil", got.Checksum)
+	}
+}
+
+func TestUpdateDownloadChecksum_NotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	err := store.UpdateDownloadChecksum(ctx, "nonexistent", &model.Checksum{Algorithm: "sha256", Value: "abc"})
+	if err != model.ErrNotFound {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestUnicodeFilenames(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()

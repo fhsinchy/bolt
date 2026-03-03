@@ -117,6 +117,7 @@ Add flags:
   --segments <n>      Number of segments (1-32)
   --header <k:v>      Custom header (repeatable)
   --referer <url>     Referer URL
+  --checksum <a:v>    Verify checksum (e.g. sha256:abc123...)
   --json              Output as JSON
 
 List flags:
@@ -356,6 +357,11 @@ func runAdd(ctx context.Context, c *cli.Client, args []string) error {
 			i++
 			if i < len(args) {
 				opts.Referer = args[i]
+			}
+		case "--checksum":
+			i++
+			if i < len(args) {
+				opts.Checksum = args[i]
 			}
 		case "--json":
 			opts.JSON = true

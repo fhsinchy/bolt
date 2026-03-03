@@ -14,6 +14,7 @@
     onDragStart?: (e: DragEvent) => void;
     onDragOver?: (e: DragEvent) => void;
     onDragLeave?: (e: DragEvent) => void;
+    onShowDetails?: () => void;
   }
 
   let {
@@ -25,6 +26,7 @@
     onDragStart,
     onDragOver,
     onDragLeave,
+    onShowDetails,
   }: Props = $props();
 
   const selected = $derived(getSelectedIds().has(download.id));
@@ -70,19 +72,25 @@
     return "📁";
   });
 
-  function handleClick() {
-    toggleSelected(download.id);
-  }
+  let lastClickTime = 0;
 
-  async function handleDblClick() {
-    if (download.status === "completed") {
-      try {
+  function handleClick() {
+    const now = Date.now();
+    if (now - lastClickTime < 400) {
+      // Double-click detected
+      lastClickTime = 0;
+      if (download.status === "completed") {
         const path = download.dir + "/" + download.filename;
-        await (window as any).go.app.App.OpenFile(path);
-      } catch (e) {
-        console.error("Open file failed:", e);
+        (window as any).go.app.App.OpenFile(path).catch((err: any) =>
+          console.error("Open file failed:", err)
+        );
+      } else if (onShowDetails) {
+        onShowDetails();
       }
+      return;
     }
+    lastClickTime = now;
+    toggleSelected(download.id);
   }
 
   const sizeText = $derived.by(() => {
@@ -107,7 +115,6 @@
   tabindex="0"
   draggable={draggable}
   onclick={handleClick}
-  ondblclick={handleDblClick}
   onkeydown={(e) => e.key === "Enter" && handleClick()}
   ondragstart={onDragStart}
   ondragover={onDragOver}
@@ -169,6 +176,6 @@
 
   <!-- Action buttons -->
   <div class="flex-shrink-0">
-    <ActionButtons {download} />
+    <ActionButtons {download} {onShowDetails} />
   </div>
 </div>

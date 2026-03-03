@@ -1,6 +1,6 @@
 # Bolt — Project Status Report
 
-**Date:** March 1, 2026 (updated)
+**Date:** March 3, 2026 (updated)
 
 ---
 
@@ -128,12 +128,13 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 | Extension popup | Done (`extensions/chrome/popup/`, `extensions/firefox/popup/`) |
 | Extension file/size filters | Done — hardcoded + user-configurable min file size, extension whitelist/blacklist in popup |
 | Extension domain blocklist | Done — hardcoded blocklist + user-configurable domain blocklist with subdomain matching |
+| Download details dialog | Done — segment visualization, URL refresh, checksum editing, metadata; info button + double-click |
 
 ## P2 Feature Status
 
 | Feature | Status |
 |---------|--------|
-| Checksum verification | **Config only** — `Checksum` struct in model; not enforced in engine |
+| Checksum verification | Done — verified on completion, editable via details dialog (including active downloads), pass/fail indicator |
 | Download scheduling | Not implemented |
 | Clipboard monitoring | **Config only** — `clipboard_monitor` field exists; not wired |
 | Full settings panel | Mostly done — exposes 9 settings (dir, concurrency, segments, retries, tray, speed limit, theme, port, token); missing: proxy, categorize |

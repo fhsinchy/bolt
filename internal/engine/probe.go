@@ -119,6 +119,11 @@ func parseProbeResponse(resp *http.Response) *model.ProbeResult {
 		result.Filename = parseContentDispositionFilename(cd)
 	}
 
+	// Fall back to URL path segment
+	if result.Filename == "" {
+		result.Filename = filenameFromURL(result.FinalURL)
+	}
+
 	return result
 }
 

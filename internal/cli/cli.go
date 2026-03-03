@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -56,6 +57,16 @@ func (c *Client) Add(ctx context.Context, opts AddOptions) error {
 		Dir:      opts.Dir,
 		Segments: opts.Segments,
 		Headers:  opts.Headers,
+	}
+
+	if opts.Checksum != "" {
+		parts := strings.SplitN(opts.Checksum, ":", 2)
+		if len(parts) == 2 {
+			req.Checksum = &model.Checksum{
+				Algorithm: parts[0],
+				Value:     parts[1],
+			}
+		}
 	}
 
 	if opts.Referer != "" {
@@ -464,6 +475,7 @@ type AddOptions struct {
 	Segments int
 	Headers  map[string]string
 	Referer  string
+	Checksum string // "algorithm:value" (e.g. "sha256:abc123...")
 	JSON     bool
 }
 

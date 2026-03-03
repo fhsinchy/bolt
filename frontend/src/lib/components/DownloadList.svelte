@@ -2,6 +2,12 @@
   import { getFilteredDownloads, getSearchQuery, getDownloads, reorderDownloads } from "../state/downloads.svelte";
   import DownloadRow from "./DownloadRow.svelte";
 
+  interface Props {
+    onShowDetails?: (id: string) => void;
+  }
+
+  let { onShowDetails }: Props = $props();
+
   const downloads = $derived(getFilteredDownloads());
   const isSearching = $derived(!!getSearchQuery());
 
@@ -106,6 +112,7 @@
         onDragStart={(e) => handleDragStart(e, download.id)}
         onDragOver={(e) => handleDragOver(e, download.id)}
         onDragLeave={(e) => handleDragLeave(e, download.id)}
+        onShowDetails={onShowDetails ? () => onShowDetails(download.id) : undefined}
       />
     {/each}
   </div>

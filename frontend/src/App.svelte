@@ -9,10 +9,13 @@
   import AddDownloadDialog from "./lib/components/AddDownloadDialog.svelte";
   import SettingsDialog from "./lib/components/SettingsDialog.svelte";
   import BatchImportDialog from "./lib/components/BatchImportDialog.svelte";
+  import DownloadDetailsDialog from "./lib/components/DownloadDetailsDialog.svelte";
 
   let showAddDialog = $state(false);
   let showSettings = $state(false);
   let showBatchImport = $state(false);
+  let showDetailsDialog = $state(false);
+  let detailsDownloadId = $state("");
   let initialUrl = $state("");
 
   const app = (window as any).go?.app?.App;
@@ -22,7 +25,7 @@
     const isCtrlQ = (e.ctrlKey || e.metaKey) && e.key === 'q';
 
     // Skip shortcuts when dialogs are open (except Ctrl+Q)
-    if ((showAddDialog || showSettings || showBatchImport) && !isCtrlQ) return;
+    if ((showAddDialog || showSettings || showBatchImport || showDetailsDialog) && !isCtrlQ) return;
 
     // Skip when typing in form elements (except Ctrl+Q)
     const tag = (e.target as HTMLElement)?.tagName;
@@ -158,7 +161,7 @@
   />
   <SearchBar />
   <div class="flex-1 overflow-y-auto">
-    <DownloadList />
+    <DownloadList onShowDetails={(id) => { detailsDownloadId = id; showDetailsDialog = true; }} />
   </div>
   <StatusBar />
 </main>
@@ -173,4 +176,8 @@
 
 {#if showBatchImport}
   <BatchImportDialog onClose={() => (showBatchImport = false)} />
+{/if}
+
+{#if showDetailsDialog}
+  <DownloadDetailsDialog downloadId={detailsDownloadId} onClose={() => { showDetailsDialog = false; detailsDownloadId = ""; }} />
 {/if}

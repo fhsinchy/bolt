@@ -525,6 +525,29 @@ func (e *Engine) ProbeURL(ctx context.Context, rawURL string, headers map[string
 	return Probe(ctx, e.client, rawURL, headers)
 }
 
+// UpdateChecksum updates the checksum for a download.
+// Rejects updates on completed downloads. Active downloads are allowed
+// so the checksum is verified on completion.
+func (e *Engine) UpdateChecksum(ctx context.Context, id string, checksum *model.Checksum) error {
+	dl, err := e.store.GetDownload(ctx, id)
+	if err != nil {
+		return err
+	}
+	if dl.Status == model.StatusCompleted {
+		return model.ErrAlreadyCompleted
+	}
+	if err := e.store.UpdateDownloadChecksum(ctx, id, checksum); err != nil {
+		return err
+	}
+	// Update in-memory state so active downloads verify on completion
+	e.mu.Lock()
+	if ad, exists := e.active[id]; exists {
+		ad.download.Checksum = checksum
+	}
+	e.mu.Unlock()
+	return nil
+}
+
 // IsActive returns whether a download is currently running.
 func (e *Engine) IsActive(id string) bool {
 	e.mu.Lock()

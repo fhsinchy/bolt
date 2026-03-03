@@ -31,4 +31,5 @@ Version-based using `PRAGMA user_version`. Each migration runs in its own transa
 - `sql.ErrNoRows` → `model.ErrNotFound`; update/delete check `RowsAffected() == 0`
 - `NextQueueOrder` returns `MAX(queue_order)+1` for new downloads
 - `ReorderDownloads` sets `queue_order` by array index in a transaction
+- `UpdateDownloadChecksum` updates the `"algorithm:value"` checksum string for a download
 - `ListDownloads` sorts by `queue_order ASC, created_at DESC`

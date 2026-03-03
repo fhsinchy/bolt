@@ -124,6 +124,20 @@ Four features for daily-driver readiness.
 - Batch URL import — `BatchImportDialog` with textarea/file import, sequential `AddDownload` calls with progress tracking; `SelectTextFile`/`ReadTextFile` IPC methods
 - Queue reordering (drag & drop) — `queue_order` column, `NextQueueOrder`/`ReorderDownloads` DB methods, `PUT /api/downloads/reorder` endpoint, HTML5 drag-and-drop in `DownloadList`/`DownloadRow` with grip handle
 
+### Download Details Dialog (COMPLETE)
+Full details dialog accessible via info button on each download row or double-click on non-completed downloads.
+
+**What was built:**
+- Download details dialog (`DownloadDetailsDialog.svelte`) — 640px wide, collapsible sections for segments, URL, checksum, metadata
+- Segment visualization — per-segment progress bars with byte ranges, polled every 1s while active
+- URL refresh UI — probe new URL, verify size match, refresh via `RefreshURL` IPC
+- Checksum editing — add/edit checksum on any non-completed download (including active); verified on completion with pass/fail indicator
+- Metadata display — ID, directory, sizes, ETag, headers, timestamps, error
+- Backend: `UpdateDownloadChecksum` DB method, `UpdateChecksum` engine method (updates in-memory state for active downloads), `GetDownloadDetail`/`UpdateChecksum` IPC methods, `DownloadDetail` struct
+- Info button (circle-i) in `ActionButtons`, always visible
+- Double-click on non-completed downloads opens details; completed downloads still open file
+- Probe filename detection now falls back to URL path when `Content-Disposition` is absent
+
 ### Phase 9: Steam Deck + Decky Plugin (NOT STARTED)
 Decky Loader plugin (Python + React) as thin client to Bolt's REST API. QAM panel for Gaming Mode.
 
@@ -204,6 +218,7 @@ frontend/                  Svelte 5 + TypeScript + Vite + Tailwind
         ActionButtons.svelte Per-download context actions
         AddDownloadDialog.svelte  URL probe + download creation (supports initialUrl prop)
         BatchImportDialog.svelte  Batch URL import (paste/file) with progress
+        DownloadDetailsDialog.svelte  Download details with segments, URL refresh, checksum editing
         SettingsDialog.svelte     Config editor
         StatusBar.svelte     Active/queued counts + total speed
 internal/

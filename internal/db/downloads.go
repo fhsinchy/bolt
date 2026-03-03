@@ -155,6 +155,18 @@ func (s *Store) SetCompleted(ctx context.Context, id string) error {
 	return checkRowsAffected(result, id)
 }
 
+// UpdateDownloadChecksum updates the checksum for a download.
+func (s *Store) UpdateDownloadChecksum(ctx context.Context, id string, checksum *model.Checksum) error {
+	checksumStr := formatChecksum(checksum)
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE downloads SET checksum = ? WHERE id = ?`,
+		checksumStr, id)
+	if err != nil {
+		return fmt.Errorf("update checksum: %w", err)
+	}
+	return checkRowsAffected(result, id)
+}
+
 // DeleteDownload deletes a download by ID. Segments are cascade-deleted.
 func (s *Store) DeleteDownload(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx,

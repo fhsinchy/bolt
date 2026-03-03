@@ -6,10 +6,10 @@ Core download engine — orchestrates the full download lifecycle.
 
 | File | Purpose |
 |---|---|
-| `engine.go` | Engine struct, AddDownload, Start/Pause/Resume/Cancel/Shutdown, ProbeURL |
+| `engine.go` | Engine struct, AddDownload, Start/Pause/Resume/Cancel/Shutdown, ProbeURL, UpdateChecksum |
 | `segment.go` | segmentWorker — per-segment goroutine with retry logic |
 | `progress.go` | progressAggregator — collects reports, emits events, persists to DB |
-| `probe.go` | HEAD request probing (with GET fallback on 405) |
+| `probe.go` | HEAD request probing (with GET fallback on 405), filename from Content-Disposition or URL path |
 | `filename.go` | Filename detection + deduplication |
 | `httpclient.go` | HTTP client factory with DisableCompression, cookie jar |
 | `refresh.go` | Tier 3 manual URL refresh with size validation |
@@ -47,3 +47,8 @@ When `AcceptsRanges=false` or `TotalSize=-1`: use 1 segment, no Range header.
 - `ProbeURL(ctx, rawURL, headers)` — wraps package-level `Probe()` with engine's HTTP client (used by server's `/api/probe`)
 - `PauseDownload` now publishes `event.DownloadPaused`
 - `ResumeDownload` now publishes `event.DownloadResumed`
+
+## Later Additions
+
+- `UpdateChecksum(ctx, id, checksum)` — updates checksum for a download; rejects completed but allows active (updates in-memory `activeDownload.download.Checksum` so verification runs on completion)
+- Probe now falls back to `filenameFromURL()` when `Content-Disposition` doesn't provide a filename

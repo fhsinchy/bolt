@@ -45,6 +45,11 @@ export interface Segment {
   done: boolean;
 }
 
+export interface DownloadDetail {
+  download: Download;
+  segments: Segment[];
+}
+
 export interface ProbeResult {
   filename: string;
   total_size: number;

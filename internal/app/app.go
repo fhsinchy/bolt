@@ -152,6 +152,33 @@ func (a *App) GetDownload(id string) (*model.Download, error) {
 	return dl, nil
 }
 
+// DownloadDetail holds a download with its segments.
+type DownloadDetail struct {
+	Download model.Download  `json:"download"`
+	Segments []model.Segment `json:"segments"`
+}
+
+// GetDownloadDetail returns a download and its segments for the details dialog.
+func (a *App) GetDownloadDetail(id string) (*DownloadDetail, error) {
+	dl, segments, err := a.engine.GetDownload(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	if segments == nil {
+		segments = []model.Segment{}
+	}
+	return &DownloadDetail{Download: *dl, Segments: segments}, nil
+}
+
+// UpdateChecksum updates the checksum for a download.
+func (a *App) UpdateChecksum(id string, algorithm string, value string) error {
+	var checksum *model.Checksum
+	if algorithm != "" && value != "" {
+		checksum = &model.Checksum{Algorithm: algorithm, Value: value}
+	}
+	return a.engine.UpdateChecksum(context.Background(), id, checksum)
+}
+
 // PauseDownload pauses an active download.
 func (a *App) PauseDownload(id string) error {
 	return a.engine.PauseDownload(context.Background(), id)

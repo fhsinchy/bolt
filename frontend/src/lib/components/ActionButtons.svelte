@@ -3,9 +3,10 @@
 
   interface Props {
     download: Download;
+    onShowDetails?: () => void;
   }
 
-  let { download }: Props = $props();
+  let { download, onShowDetails }: Props = $props();
 
   const app = (window as any).go.app.App;
 
@@ -62,6 +63,20 @@
 </script>
 
 <div class="flex items-center gap-1">
+  {#if onShowDetails}
+    <button
+      onclick={onShowDetails}
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+      title="Details"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="16" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12.01" y2="8" />
+      </svg>
+    </button>
+  {/if}
+
   {#if download.status === "active"}
     <button
       onclick={pause}
