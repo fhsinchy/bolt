@@ -15,6 +15,8 @@
 - **Speed limiter** — global rate limiting across all active segments
 - **Dead link refresh** — automatic URL renewal for expired CDN links
 - **Dark theme** — system, light, and dark modes with live switching
+- **Checksum verification** — SHA-256, SHA-512, SHA-1, MD5; set before or during download, verified on completion
+- **Download details** — per-segment progress, URL refresh, checksum editing, full metadata view
 - **Desktop notifications** — completion and failure alerts via native OS notifications
 - **Browser extensions** — Chrome and Firefox extensions intercept downloads and send them to Bolt
 - **REST API** — full CRUD over HTTP for scripting and extension integration
@@ -157,8 +159,8 @@ frontend/           Svelte 5 + TypeScript + Tailwind CSS
 | 3. Desktop GUI | Wails app, system tray, Svelte frontend | Complete |
 | 4. Browser Extension | Chrome + Firefox download interception | Complete |
 | 5. Linux-Only Shift | Remove cross-platform code, update docs, Linux-only focus | Complete |
-| 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import | In progress |
-| 7. P2 Features | Checksum verification, download scheduling, clipboard monitoring | Planned |
+| 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import, download details | Complete |
+| 7. P2 Features | Download scheduling, clipboard monitoring | Planned |
 | 8. P3 Features | Proxy support, file categorization, auto-shutdown | Planned |
 | 9. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
 
