@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -53,8 +55,26 @@ jobs:
           cp build/appicon.png bolt-linux-amd64/
           tar czf "bolt-linux-amd64-${TAG}.tar.gz" bolt-linux-amd64/
 
-      - name: Build browser extensions
-        run: make build-extension
+      - name: Generate changelog
+        id: changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Find the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -1)
+          if [ "$PREV_TAG" = "$TAG" ] || [ -z "$PREV_TAG" ]; then
+            # First release — use all commits
+            RANGE="$TAG"
+          else
+            RANGE="${PREV_TAG}..${TAG}"
+          fi
+
+          {
+            echo "## Changelog"
+            echo ""
+            git log "$RANGE" --pretty=format:"* [\`%h\`](https://github.com/fhsinchy/bolt/commit/%H) %s" --no-merges
+            echo ""
+          } > changelog.md
 
       - name: Create GitHub Release
         env:
@@ -63,7 +83,5 @@ jobs:
         run: |
           gh release create "$TAG" \
             --title "$TAG" \
-            --generate-notes \
-            "bolt-linux-amd64-${TAG}.tar.gz#Bolt Linux amd64" \
-            dist/bolt-capture-chrome.zip#"Chrome Extension" \
-            dist/bolt-capture-firefox.zip#"Firefox Extension"
+            --notes-file changelog.md \
+            "bolt-linux-amd64-${TAG}.tar.gz"
