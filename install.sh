@@ -247,7 +247,7 @@ WantedBy=default.target
 UNIT
         fi
         systemctl --user daemon-reload
-        systemctl --user enable bolt
+        systemctl --user enable --now bolt
         info "Installed and enabled systemd user unit"
     else
         warn "systemctl not found — Bolt won't auto-start on boot"
