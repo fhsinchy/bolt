@@ -143,7 +143,8 @@ type daemon struct {
 }
 
 // setupDaemon initializes all shared resources (config, DB, engine, queue, server).
-func setupDaemon() *daemon {
+// headless indicates whether the daemon is running without a GUI.
+func setupDaemon(headless bool) *daemon {
 	// 1. Load config
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
@@ -199,7 +200,7 @@ func setupDaemon() *daemon {
 	}()
 
 	// 7. Create HTTP server
-	srv := server.New(eng, store, cfg, bus, queueMgr)
+	srv := server.New(eng, store, cfg, bus, queueMgr, headless)
 
 	return &daemon{
 		cfg:      cfg,
@@ -237,7 +238,7 @@ func (d *daemon) shutdown() {
 
 // launchHeadless starts the daemon with HTTP server (no GUI).
 func launchHeadless() {
-	d := setupDaemon()
+	d := setupDaemon(true)
 	defer d.cleanup()
 
 	// Start queue manager goroutine
@@ -439,10 +440,12 @@ func runRefresh(ctx context.Context, c *cli.Client, args []string) error {
 }
 
 // raiseExistingWindow checks if a daemon is already running. If so, it asks the
-// daemon to show its window and exits. If the daemon is running but unreachable,
-// it exits with an informative error rather than falling through to start a
-// second instance (which would crash on the PID file check).
-// Returns false only when no daemon is running.
+// daemon to show its window and exits. If the daemon is running headless (e.g.
+// via systemd), it stops the headless daemon and returns false so the caller
+// can launch the GUI. If the daemon is running but unreachable, it exits with
+// an informative error rather than falling through to start a second instance
+// (which would crash on the PID file check).
+// Returns false only when no daemon is running (or was headless and stopped).
 func raiseExistingWindow() bool {
 	if !pid.IsRunning() {
 		return false
@@ -451,8 +454,21 @@ func raiseExistingWindow() bool {
 	if err != nil {
 		fatal(fmt.Errorf("bolt is already running but could not connect: %w", err))
 	}
-	if err := c.ShowWindow(context.Background()); err != nil {
+	headless, err := c.ShowWindow(context.Background())
+	if err != nil {
 		fatal(fmt.Errorf("bolt is already running but could not raise window: %w", err))
+	}
+	if headless {
+		// Headless daemon running (e.g. systemd) — stop it so we can launch GUI.
+		_ = c.Stop()
+		// Wait briefly for the daemon to release the PID file.
+		for i := 0; i < 20; i++ {
+			if !pid.IsRunning() {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		return false
 	}
 	fmt.Println("Bolt is already running — window raised.")
 	return true

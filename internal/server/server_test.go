@@ -64,7 +64,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		return eng.StartDownload(ctx, id)
 	})
 
-	srv := New(eng, store, cfg, bus, queueMgr)
+	srv := New(eng, store, cfg, bus, queueMgr, false)
 
 	// Build the middleware-wrapped handler for use with httptest.
 	mux := http.NewServeMux()

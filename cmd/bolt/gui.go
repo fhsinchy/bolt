@@ -22,7 +22,7 @@ import (
 var appIcon []byte
 
 func launchGUI() {
-	d := setupDaemon()
+	d := setupDaemon(false)
 	defer d.cleanup()
 
 	application := app.New(d.engine, d.store, d.cfg, d.bus, d.queueMgr)

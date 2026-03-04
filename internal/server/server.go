@@ -17,22 +17,24 @@ import (
 
 // Server provides the HTTP API for controlling the download engine.
 type Server struct {
-	engine *engine.Engine
-	store  *db.Store
-	cfg    *config.Config
-	bus    *event.Bus
-	queue  *queue.Manager
-	srv    *http.Server
+	engine   *engine.Engine
+	store    *db.Store
+	cfg      *config.Config
+	bus      *event.Bus
+	queue    *queue.Manager
+	srv      *http.Server
+	headless bool
 }
 
-// New creates a new Server.
-func New(eng *engine.Engine, store *db.Store, cfg *config.Config, bus *event.Bus, queueMgr *queue.Manager) *Server {
+// New creates a new Server. Set headless to true when running without a GUI.
+func New(eng *engine.Engine, store *db.Store, cfg *config.Config, bus *event.Bus, queueMgr *queue.Manager, headless bool) *Server {
 	return &Server{
-		engine: eng,
-		store:  store,
-		cfg:    cfg,
-		bus:    bus,
-		queue:  queueMgr,
+		engine:   eng,
+		store:    store,
+		cfg:      cfg,
+		bus:      bus,
+		queue:    queueMgr,
+		headless: headless,
 	}
 }
 

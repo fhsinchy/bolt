@@ -324,17 +324,25 @@ func (c *Client) Refresh(ctx context.Context, id, newURL string) error {
 }
 
 // ShowWindow asks the running daemon to raise its GUI window.
-func (c *Client) ShowWindow(ctx context.Context) error {
+// Returns true if the daemon is running in headless mode (no GUI to raise).
+func (c *Client) ShowWindow(ctx context.Context) (headless bool, err error) {
 	resp, err := c.post(ctx, "/api/window/show", nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return readError(resp)
+		return false, readError(resp)
 	}
-	return nil
+
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, nil
+	}
+	return result.Status == "headless", nil
 }
 
 // watchProgress connects to the WebSocket and displays progress for a download.
