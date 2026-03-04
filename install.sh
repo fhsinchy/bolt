@@ -192,17 +192,18 @@ main() {
     install -m 755 "${tmpdir}/bolt" "${INSTALL_DIR}/${BINARY_NAME}"
     info "Installed binary to ${INSTALL_DIR}/${BINARY_NAME}"
 
-    # Install desktop entry
+    # Install desktop entry (substitute absolute path for Exec)
     mkdir -p "$DESKTOP_DIR"
     if [ -f "${tmpdir}/bolt.desktop" ]; then
-        cp "${tmpdir}/bolt.desktop" "${DESKTOP_DIR}/bolt.desktop"
+        sed "s|Exec=bolt|Exec=${INSTALL_DIR}/bolt|" "${tmpdir}/bolt.desktop" \
+            > "${DESKTOP_DIR}/bolt.desktop"
     else
         # Generate inline if not in tarball
-        cat > "${DESKTOP_DIR}/bolt.desktop" << 'DESKTOP'
+        cat > "${DESKTOP_DIR}/bolt.desktop" << DESKTOP
 [Desktop Entry]
 Name=Bolt
 Comment=Fast, segmented download manager
-Exec=bolt
+Exec=${INSTALL_DIR}/bolt
 Icon=bolt
 Terminal=false
 Type=Application
