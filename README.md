@@ -165,7 +165,7 @@ frontend/           Svelte 5 + TypeScript + Tailwind CSS
 | 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import, download details | Complete |
 | 7. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
 
-See `STATUS.md` for detailed per-feature status.
+See `docs/STATUS.md` for detailed per-feature status.
 
 ## Tech Stack
 

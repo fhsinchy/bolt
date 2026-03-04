@@ -1,6 +1,6 @@
 # Bolt — Download Manager
 
-Fast, segmented download manager for **Linux**. See `bolt-prd.md` and `bolt-trd.md` for full specs.
+Fast, segmented download manager for **Linux**. See `docs/bolt-prd.md` and `docs/bolt-trd.md` for full specs.
 
 ## Project Info
 
