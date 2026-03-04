@@ -22,7 +22,7 @@ import (
 	"github.com/fhsinchy/bolt/internal/server"
 )
 
-const version = "0.3.0-dev"
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
