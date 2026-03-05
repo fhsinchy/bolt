@@ -102,6 +102,7 @@ func (a *App) OnStartup(ctx context.Context) {
 				})
 			case event.WindowShow:
 				wailsRuntime.WindowShow(ctx)
+				wailsRuntime.WindowUnminimise(ctx)
 				if a.windowShowHook != nil {
 					a.windowShowHook()
 				}

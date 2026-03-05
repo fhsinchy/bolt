@@ -45,7 +45,7 @@ Wails' `linux.Options{Icon: []byte}` calls `gtk_window_set_icon()`, which only w
 
 ## Development Phases
 
-### Phase 1: Download Engine + CLI (COMPLETE)
+### Phase 1: Download Engine (COMPLETE)
 Standalone binary with embedded engine. No HTTP server, no GUI, no browser extension.
 
 **Exit criteria (met):** Can download a file in 16 segments, pause, kill the process, restart, and resume to completion. Verified by `TestIntegration_ExitCriteria`.
@@ -59,22 +59,20 @@ Standalone binary with embedded engine. No HTTP server, no GUI, no browser exten
 - Step 6: Segment downloader + progress aggregator — `internal/engine/{segment,progress}.go`
 - Step 7: Engine core (lifecycle orchestration) — `internal/engine/{engine,refresh}.go`
 - Step 8: Queue manager — `internal/queue/`
-- Step 9: CLI interface — `internal/cli/`, `cmd/bolt/`
+- Step 9: Entry point — `cmd/bolt/`
 - Step 10: Integration tests + Makefile
 
-### Phase 2: HTTP Server + Daemon (COMPLETE)
-HTTP server with REST API and WebSocket. CLI refactored to HTTP client. PID file daemon management.
+### Phase 2: HTTP Server (COMPLETE)
+HTTP server with REST API and WebSocket for browser extension compatibility.
 
 **Exit criteria (met):** Can add downloads via `curl` to the API, see progress via WebSocket, and queue respects concurrency limits.
 
 **What was built:**
-- Step 1: PID file management — `internal/pid/`
-- Step 2: New event types (DownloadPaused, DownloadResumed) — `internal/event/`
-- Step 3: Engine.ProbeURL method — `internal/engine/engine.go`
-- Step 4: WebSocket dependency — `nhooyr.io/websocket`
-- Step 5: HTTP server (REST + WebSocket + middleware) — `internal/server/`
-- Step 6: CLI refactored to HTTP client — `internal/cli/`
-- Step 7: Entry point with daemon/client modes — `cmd/bolt/main.go`
+- Step 1: New event types (DownloadPaused, DownloadResumed) — `internal/event/`
+- Step 2: Engine.ProbeURL method — `internal/engine/engine.go`
+- Step 3: WebSocket dependency — `nhooyr.io/websocket`
+- Step 4: HTTP server (REST + WebSocket + middleware) — `internal/server/`
+- Step 5: Entry point updated — `cmd/bolt/main.go`
 
 ### Phase 3: Wails GUI + Svelte Frontend (COMPLETE)
 Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
@@ -85,7 +83,7 @@ Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
 - Step 0: Prerequisites — Wails CLI, GTK3/WebKit system deps
 - Step 1: Wails project scaffolding — `wails.json`, `frontend/`, `build/appicon.png`
 - Step 2: Go app bindings (IPC methods) — `internal/app/app.go`
-- Step 3: Entry point refactored for GUI mode — `cmd/bolt/gui.go`, `cmd/bolt/main.go`
+- Step 3: Entry point — `cmd/bolt/gui.go`, `cmd/bolt/main.go`
 - Step 4: Frontend foundation — types, utils, reactive state, layout shell
 - Step 5: Download list UI — `DownloadList`, `DownloadRow`, `ProgressBar`, `ActionButtons`
 - Step 6: Toolbar + SearchBar + StatusBar
@@ -94,7 +92,7 @@ Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
 - Step 9: System tray via `energye/systray` — `internal/tray/`
 
 ### Phase 4: Browser Extension — P0 (COMPLETE)
-Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser downloads and sends them to the Bolt daemon via REST API.
+Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser downloads and sends them to Bolt via REST API.
 
 **Exit criteria (met):** Extension intercepts downloads, forwards cookies/referrer, uses check-then-cancel safety, supports context menu "Download with Bolt", Tier 2 refresh matching, and minimal config popup.
 
@@ -112,7 +110,6 @@ Removed cross-platform code, updated all docs to reflect Linux-only targeting.
 - Removed Windows/macOS code paths from `internal/notify/notify.go` (was: `runtime.GOOS` switch with `osascript` and PowerShell; now: direct `notify-send` call)
 - Removed Windows/macOS code paths from `internal/app/app.go` `openPath()` (was: `runtime.GOOS` switch; now: direct `xdg-open` call)
 - Updated PRD, TRD, README, STATUS, CLAUDE.md
-- Added Steam Deck / Decky Plugin as Phase 9
 - Renumbered P1/P2/P3 feature phases to 6/7/8
 
 ### Phase 6: Remaining P1 Features (COMPLETE)
@@ -138,18 +135,15 @@ Full details dialog accessible via info button on each download row or double-cl
 - Double-click on non-completed downloads opens details; completed downloads still open file
 - Probe filename detection now falls back to URL path when `Content-Disposition` is absent
 
-### Phase 9: Steam Deck + Decky Plugin (NOT STARTED)
-Decky Loader plugin (Python + React) as thin client to Bolt's REST API. QAM panel for Gaming Mode.
-
 ## Key Design Decisions
 
-**Linux-Only Focus:** Bolt targets Linux exclusively. This enables deep desktop integration (D-Bus, XDG portals, systemd, Steam Deck / Decky Loader) instead of lowest-common-denominator cross-platform abstractions. The Go stdlib functions like `os.UserConfigDir()` still work correctly on Linux and are kept as-is.
+**Linux-Only Focus:** Bolt targets Linux desktop exclusively. This enables deep desktop integration (D-Bus, XDG portals, systemd) instead of lowest-common-denominator cross-platform abstractions. The Go stdlib functions like `os.UserConfigDir()` still work correctly on Linux and are kept as-is.
 
-**Phase 1:** CLI embedded the engine directly.
+**Phase 1:** Engine embedded directly in the binary.
 
-**Phase 2:** CLI is now an HTTP client. The daemon (`bolt start`) runs the engine + HTTP server. CLI commands (`bolt add`, `bolt list`, etc.) talk to the daemon via REST API. Real-time progress uses WebSocket. The engine interface stayed identical — only the calling layer changed.
+**Phase 2:** Added HTTP server with REST API and WebSocket for browser extension compatibility.
 
-**Phase 3:** GUI mode is now the default. `bolt` (no args) and `bolt start` launch the GUI. `bolt start --headless` runs the headless daemon (Phase 2 behavior). Both modes start the HTTP server for CLI/extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread.
+**Phase 3:** GUI is the only interface. `bolt` (no args) and `bolt start` launch the GUI. The HTTP server starts alongside for browser extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread. Instance detection uses HTTP probe (`GET /api/stats`) instead of PID files.
 
 **Phase 4:** Vanilla JS extensions split into `extensions/chrome/` and `extensions/firefox/` (no build step, no runtime polyfills). Each directory is directly loadable in its browser. Check-then-cancel safety: verifies Bolt is reachable before cancelling browser download — if Bolt is down, the browser download proceeds normally. `RefreshURL` now accepts optional `headers` map for cookie/referrer forwarding from the extension. Tier 2 refresh matching checks `/api/downloads?status=refresh` for candidates before creating new downloads.
 
@@ -193,7 +187,7 @@ Tests do not require Wails build tags — `go test ./...` works without them.
 
 ```
 cmd/bolt/
-  main.go                  Entry point (GUI/headless/CLI dispatch)
+  main.go                  Entry point (GUI / version / help)
   gui.go                   launchGUI() + Wails window + tray + Linux icon setup
   appicon.png              Embedded app icon for linux.Options{Icon} (X11 fallback)
 build/
@@ -230,8 +224,6 @@ internal/
   engine/                  Download engine (core business logic)
   queue/                   Queue manager
   server/                  HTTP server (REST API + WebSocket)
-  cli/                     CLI HTTP client
-  pid/                     PID file management
   tray/                    System tray (energye/systray, white icon embedded)
   notify/                  Desktop notifications (notify-send)
   testutil/                Test helpers (httptest server)

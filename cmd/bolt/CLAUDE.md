@@ -1,47 +1,45 @@
 # cmd/bolt
 
-CLI entry point with two modes: daemon (server) and client.
+GUI-only entry point. Launches the Wails desktop application.
 
 ## Mode Detection
 
-- `bolt` (no args) or `bolt start` → `launchHeadless()` daemon mode
-- `bolt stop` → send SIGTERM to running daemon
-- `bolt add/list/status/pause/resume/cancel/refresh` → HTTP client mode via `runWithClient()`
+- `bolt` (no args) or `bolt start` → `launchGUI()` via `gui.go`
+- `bolt version` → print version and exit
+- `bolt help` → print usage and exit
+- Any other subcommand → print error and exit
 
-## Daemon Mode (`launchHeadless`)
+## Startup Sequence (`setupDaemon`)
 
-Startup sequence:
-1. Load config
-2. Check PID file → error if already running
-3. Write PID file, defer Remove
-4. Open SQLite database
-5. Create event bus + engine + queue manager
-6. Wire queue completion (subscribe to bus, call OnDownloadComplete on completed/failed/paused)
-7. Create HTTP server
-8. Start queue manager goroutine
-9. Start HTTP server goroutine
-10. Resume interrupted downloads
-11. Block on SIGINT/SIGTERM
-12. Shutdown: server → engine → cancel context → PID remove
+Called by `launchGUI()` to initialize backend resources before the Wails window opens:
 
-## Client Mode (`runWithClient`)
+1. Load config (create defaults if missing)
+2. Open SQLite database, run migrations
+3. Create event bus + engine + queue manager
+4. Wire queue completion (subscribe to bus, call OnDownloadComplete on completed/failed/paused)
+5. Create HTTP server (for browser extension compatibility)
+6. Start queue manager goroutine
+7. Start HTTP server goroutine
+8. Resume interrupted downloads
 
-1. Create CLI client (loads config for port + token)
-2. Check daemon is running (GET /api/stats)
-3. Set up signal handler (SIGINT → cancel context)
-4. Run the command function
+## Existing Instance Detection (`raiseExistingWindow`)
 
-## Commands
+Before starting the GUI, checks if another Bolt instance is already running by probing the HTTP server at the configured port. If reachable, sends `POST /api/window/show` to bring the existing window to front, then exits.
 
-| Command | Description |
+## GUI Launch (`launchGUI` in `gui.go`)
+
+1. Call `raiseExistingWindow()` — exit if another instance is running
+2. Call `setupDaemon()` — initialize backend resources
+3. Create Wails app with IPC bindings (`internal/app/`)
+4. Configure window options (title, size, icon)
+5. Set up system tray via `energye/systray` (`internal/tray/`)
+6. Launch Wails window (blocks until quit)
+7. On quit: shutdown server → engine → cancel context
+
+## Files
+
+| File | Purpose |
 |---|---|
-| `bolt` / `bolt start` | Start daemon |
-| `bolt stop` | Stop daemon |
-| `bolt add <url> [flags]` | Add download |
-| `bolt list [flags]` | List downloads |
-| `bolt status <id>` | Show download details |
-| `bolt pause <id>` | Pause a download |
-| `bolt resume <id>` | Resume a download |
-| `bolt cancel <id> [--delete-file]` | Cancel and remove |
-| `bolt refresh <id> <url>` | Update URL |
-| `bolt version` | Show version |
+| `main.go` | Entry point, subcommand dispatch (GUI / version / help) |
+| `gui.go` | `launchGUI()`, `setupDaemon()`, `raiseExistingWindow()`, Wails window + tray setup |
+| `appicon.png` | Embedded app icon for `linux.Options{Icon}` (X11 fallback) |

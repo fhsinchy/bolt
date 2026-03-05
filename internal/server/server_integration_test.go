@@ -89,7 +89,7 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 		return eng.StartDownload(ctx, id)
 	})
 
-	srv := New(eng, store, cfg, bus, queueMgr, false)
+	srv := New(eng, store, cfg, bus, queueMgr)
 
 	// Build the same mux + middleware chain the server uses internally.
 	mux := http.NewServeMux()

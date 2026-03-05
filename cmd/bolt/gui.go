@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	bolt "github.com/fhsinchy/bolt"
@@ -21,8 +24,8 @@ import (
 //go:embed appicon.png
 var appIcon []byte
 
-func launchGUI() {
-	d := setupDaemon(false)
+func launchGUI(minimized bool) {
+	d := setupDaemon()
 	defer d.cleanup()
 
 	application := app.New(d.engine, d.store, d.cfg, d.bus, d.queueMgr)
@@ -33,7 +36,7 @@ func launchGUI() {
 	// Start queue manager goroutine
 	go d.queueMgr.Run(d.ctx)
 
-	// Start HTTP server goroutine (for CLI and browser extension compatibility)
+	// Start HTTP server goroutine (for browser extension compatibility)
 	serverErr := make(chan error, 1)
 	go func() {
 		if err := d.server.Start(d.ctx); err != nil && err != http.ErrServerClosed {
@@ -87,6 +90,20 @@ func launchGUI() {
 				wailsRuntime.Quit(ctx)
 			},
 		})
+
+		if minimized {
+			tray.SetVisible(false)
+		}
+
+		// Handle SIGTERM/SIGINT so systemctl stop works.
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			quitting = true
+			tray.Quit()
+			wailsRuntime.Quit(ctx)
+		}()
 	}
 
 	onShutdown := func(ctx context.Context) {
@@ -95,11 +112,12 @@ func launchGUI() {
 	}
 
 	err := wails.Run(&options.App{
-		Title:     "Bolt",
-		Width:     960,
-		Height:    640,
-		MinWidth:  640,
-		MinHeight: 480,
+		Title:         "Bolt",
+		Width:         960,
+		Height:        640,
+		MinWidth:      640,
+		MinHeight:     480,
+		StartHidden:   minimized,
 		AssetServer: &assetserver.Options{
 			Assets: bolt.FrontendAssets,
 		},

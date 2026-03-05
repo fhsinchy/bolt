@@ -27,6 +27,7 @@
   let checksumOpen = $state(false);
   let checksumAlgo = $state("sha256");
   let checksumValue = $state("");
+  let urlInput: HTMLInputElement;
 
   // Initialize dir from config
   $effect(() => {
@@ -37,6 +38,7 @@
   });
 
   onMount(() => {
+    urlInput?.focus();
     if (initialUrl) {
       probe();
     }
@@ -132,12 +134,12 @@
         <input
           id="url-input"
           type="text"
+          bind:this={urlInput}
           bind:value={url}
           onblur={probe}
           onkeydown={handleUrlKeydown}
           placeholder="https://example.com/file.zip"
           class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          autofocus
         />
       </div>
 

@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/bolt start --headless
+ExecStart=%h/.local/bin/bolt --minimized
 Restart=on-failure
 RestartSec=5
 

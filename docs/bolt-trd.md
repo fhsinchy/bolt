@@ -21,17 +21,16 @@
 9. [Configuration Management](#9-configuration-management)
 10. [HTTP Server & REST API](#10-http-server--rest-api)
 11. [WebSocket](#11-websocket)
-12. [CLI](#12-cli)
-13. [Wails GUI Application](#13-wails-gui-application)
-14. [Svelte Frontend](#14-svelte-frontend)
-15. [Browser Extension](#15-browser-extension)
-16. [Concurrency Model](#16-concurrency-model)
-17. [Error Handling](#17-error-handling)
-18. [Security](#18-security)
-19. [Testing Strategy](#19-testing-strategy)
-20. [Build & Distribution](#20-build--distribution)
-21. [Systemd Integration](#21-systemd-integration)
-22. [Appendix](#22-appendix)
+12. [Wails GUI Application](#12-wails-gui-application)
+13. [Svelte Frontend](#13-svelte-frontend)
+14. [Browser Extension](#14-browser-extension)
+15. [Concurrency Model](#15-concurrency-model)
+16. [Error Handling](#16-error-handling)
+17. [Security](#17-security)
+18. [Testing Strategy](#18-testing-strategy)
+19. [Build & Distribution](#19-build--distribution)
+20. [Systemd Integration](#20-systemd-integration)
+21. [Appendix](#21-appendix)
 
 ---
 
@@ -43,11 +42,10 @@ Decisions made during TRD authoring that refine ambiguities in the PRD.
 |----------|--------|-----------|
 | Frontend framework | Svelte | Smaller bundle (~20 KB vs ~140 KB for React), simpler reactivity, recommended by PRD |
 | Config storage | `config.json` file only | Human-editable, easy to back up, no SQLite `config` table needed |
-| Process model (CLI without daemon) | Error with instructions | Print clear message: "Bolt is not running. Start with `bolt` or `bolt start`." |
-| Systemd support | Yes | Ship a `bolt.service` user unit file; daemon mode is systemd-friendly |
+| Systemd support | Yes | Ship a `bolt.service` user unit file |
 | Go version | 1.23+ | Required for `net/http` routing enhancements (method + path patterns) |
 | Download ID format | ULID (Universally Unique Lexicographically Sortable Identifier) | Sortable by creation time, URL-safe, no hyphens; prefixed with `d_` for display (e.g., `d_01JAXYZ...`) |
-| Logging | `log/slog` (stdlib) | Structured logging, zero dependencies, JSON output for daemon mode |
+| Logging | `log/slog` (stdlib) | Structured logging, zero dependencies |
 | Frontend package manager | pnpm | Fast, disk-efficient, strict dependency resolution |
 | CSS framework | Tailwind CSS v4 | Utility-first, small production builds, good Svelte integration |
 | SQLite driver | `modernc.org/sqlite` | Pure Go, no CGO, cross-compiles cleanly |
@@ -62,42 +60,36 @@ Decisions made during TRD authoring that refine ambiguities in the PRD.
 
 ### 2.1 Process Architecture
 
-Bolt has two runtime modes sharing the same binary:
+Bolt is a GUI-only application:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    bolt (single binary)                   │
 │                                                           │
-│  Mode 1: GUI (default)          Mode 2: Headless          │
-│  ┌─────────────────────┐        ┌──────────────────────┐  │
-│  │  Wails Window        │        │  No window            │  │
-│  │  + System Tray       │        │  + Signal handling    │  │
-│  │  + HTTP Server       │        │  + HTTP Server        │  │
-│  │  + Download Engine   │        │  + Download Engine    │  │
-│  │  + SQLite DB         │        │  + SQLite DB          │  │
-│  └─────────────────────┘        └──────────────────────┘  │
-│                                                           │
-│  Mode 3: CLI Client                                       │
+│  GUI Mode (default)                                       │
 │  ┌─────────────────────┐                                  │
-│  │  HTTP client only    │── Talks to running daemon ──►   │
-│  │  No engine, no DB    │                                  │
+│  │  Wails Window        │                                  │
+│  │  + System Tray       │                                  │
+│  │  + HTTP Server       │  (for browser extension)         │
+│  │  + Download Engine   │                                  │
+│  │  + SQLite DB         │                                  │
 │  └─────────────────────┘                                  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Mode detection logic in `main.go`:**
+**Command dispatch in `main.go`:**
 
 ```
-if no subcommand or subcommand == "gui"  → Mode 1 (GUI)
-if subcommand == "start"                 → Mode 2 (Headless)
-if subcommand in {add, list, status, pause, resume, cancel, config, stop, refresh} → Mode 3 (CLI client)
+if no subcommand or subcommand == "start"  → Launch GUI
+if subcommand == "version"                 → Print version
+if subcommand == "help"                    → Print usage
 ```
 
 ### 2.2 Component Dependency Graph
 
 ```
 main.go
-  ├── cmd/          (CLI argument parsing, mode selection)
+  ├── cmd/          (entry point, GUI launch)
   │
   ├── internal/engine/    (download engine — core business logic)
   │     ├── uses: internal/db/
@@ -125,10 +117,10 @@ main.go
 ### 2.3 Data Flow: Adding a Download
 
 ```
-Browser Extension                CLI                    GUI
-      │                           │                      │
-      │ POST /api/downloads       │ POST /api/downloads  │ Wails IPC bind
-      ▼                           ▼                      ▼
+Browser Extension                                      GUI
+      │                                                  │
+      │ POST /api/downloads                              │ Wails IPC bind
+      ▼                                                  ▼
 ┌──────────────────────────────────────────────────────────┐
 │                    HTTP Handler / Wails Bind              │
 │  1. Validate input                                        │
@@ -204,10 +196,6 @@ bolt/
 │   │   └── event.go                # Event bus: pub/sub for progress, status changes
 │   ├── app/
 │   │   └── app.go                  # Wails bindings (methods exposed to Svelte)
-│   ├── cli/
-│   │   └── cli.go                  # CLI client: HTTP calls to daemon, output formatting
-│   ├── pid/
-│   │   └── pid.go                  # PID file management (create, check, remove)
 │   └── model/
 │       └── model.go                # Shared types: Download, Segment, Status, etc.
 ├── frontend/                       # Svelte app (Wails frontend)
@@ -716,7 +704,6 @@ When `Engine.Shutdown(ctx)` is called (on app quit or SIGTERM):
    d. Update download status to `paused` in DB.
 3. Close the shared file handles.
 4. Close the SQLite database.
-5. Remove the PID file.
 
 Shutdown timeout: 10 seconds. If goroutines don't exit within this time, they are abandoned (the process exits).
 
@@ -909,7 +896,6 @@ Implementation: The extension queries `GET /api/downloads?status=refresh` when t
 
 Exposed via:
 - GUI: right-click → "Update URL" on a failed/refresh download.
-- CLI: `bolt refresh <id> <new-url>`.
 - API: `POST /api/downloads/:id/refresh` (same endpoint as Tier 2).
 
 **Validation:** Before swapping, Bolt sends a HEAD request to the new URL and verifies `Content-Length` matches the original download. If it doesn't, the user is warned and asked to confirm.
@@ -1189,7 +1175,7 @@ func generateToken() string {
 }
 ```
 
-Generated once on first run and persisted in `config.json`. The browser extension and CLI client must use this token.
+Generated once on first run and persisted in `config.json`. The browser extension must use this token.
 
 ---
 
@@ -1500,162 +1486,9 @@ If the WebSocket write buffer fills (slow client), messages are dropped silently
 
 ---
 
-## 12. CLI
+## 12. Wails GUI Application
 
-### 12.1 Argument Parsing
-
-Use stdlib `flag` package or a minimal hand-rolled parser. No external CLI framework.
-
-```go
-// cmd/bolt/main.go
-
-func main() {
-    if len(os.Args) < 2 {
-        launchGUI() // Mode 1
-        return
-    }
-
-    switch os.Args[1] {
-    case "gui":
-        launchGUI()
-    case "start":
-        launchHeadless()
-    case "stop":
-        cli.Stop()
-    case "add":
-        cli.Add(os.Args[2:])
-    case "list":
-        cli.List(os.Args[2:])
-    case "status":
-        cli.Status(os.Args[2:])
-    case "pause":
-        cli.Pause(os.Args[2:])
-    case "resume":
-        cli.Resume(os.Args[2:])
-    case "cancel":
-        cli.Cancel(os.Args[2:])
-    case "refresh":
-        cli.Refresh(os.Args[2:])
-    case "config":
-        cli.Config(os.Args[2:])
-    case "version":
-        fmt.Println("bolt version 1.0.0")
-    default:
-        fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
-        os.Exit(1)
-    }
-}
-```
-
-### 12.2 CLI Client
-
-```go
-// internal/cli/cli.go
-
-type Client struct {
-    baseURL string
-    token   string
-    http    *http.Client
-}
-
-func NewClient() (*Client, error) {
-    cfg, err := config.Load(config.DefaultPath())
-    if err != nil {
-        return nil, err
-    }
-    return &Client{
-        baseURL: fmt.Sprintf("http://127.0.0.1:%d", cfg.ServerPort),
-        token:   cfg.AuthToken,
-        http:    &http.Client{Timeout: 10 * time.Second},
-    }, nil
-}
-```
-
-### 12.3 Daemon Detection
-
-Before executing any command that requires the daemon, the CLI checks if it's running:
-
-```go
-func (c *Client) checkDaemon() error {
-    resp, err := c.get("/api/stats")
-    if err != nil {
-        return fmt.Errorf("Bolt is not running. Start it with `bolt` or `bolt start`.")
-    }
-    resp.Body.Close()
-    return nil
-}
-```
-
-### 12.4 Output Formatting
-
-**Default (human-readable):**
-
-```
-$ bolt list
-ID              Filename              Size     Progress  Speed       Status
-d_01JMQX...    ubuntu-24.04.iso      4.7 GB   47%       12.3 MB/s   Active
-d_01JMQY...    node-v22.tar.gz       48 MB    100%      —           Completed
-d_01JMQZ...    dataset.csv           1.2 GB   0%        —           Queued
-```
-
-Uses fixed-width columns with `text/tabwriter`. Filenames truncated to 20 characters with `...`.
-
-**JSON mode (`--json`):**
-
-```
-$ bolt list --json
-[{"id":"d_01JMQX...","filename":"ubuntu-24.04.iso",...}]
-```
-
-Raw JSON array, one line, suitable for `jq` piping.
-
-### 12.5 `bolt add` Flags
-
-```
-Usage: bolt add <url> [flags]
-
-Flags:
-  --dir <path>           Save directory (default: from config)
-  --filename <name>      Override filename
-  --segments <n>         Segment count (default: from config)
-  --speed-limit <rate>   Per-download speed limit (e.g., 5M, 500K)
-  --checksum <algo:hash> Verify checksum after download (e.g., sha256:abc...)
-  --header <key:value>   Add custom header (repeatable)
-  --referer <url>        Set referer URL for link refresh
-  --json                 Output as JSON
-```
-
-### 12.6 `bolt stop` Behavior
-
-```go
-func Stop() {
-    client := NewClient()
-    if err := client.checkDaemon(); err != nil {
-        fmt.Println("Bolt is not running.")
-        return
-    }
-
-    // Read PID file
-    pid, err := pid.Read()
-    if err != nil {
-        fmt.Fprintln(os.Stderr, "Could not read PID file.")
-        os.Exit(1)
-    }
-
-    // Send SIGTERM
-    process, _ := os.FindProcess(pid)
-    process.Signal(syscall.SIGTERM)
-
-    // Wait up to 10 seconds for process to exit
-    // (poll /api/stats until it fails)
-}
-```
-
----
-
-## 13. Wails GUI Application
-
-### 13.1 Wails Bindings
+### 12.1 Wails Bindings
 
 The `App` struct exposes Go methods to the Svelte frontend via Wails IPC:
 
@@ -1695,7 +1528,7 @@ func (a *App) OpenFolder(path string) error
 func (a *App) GetAuthToken() string
 ```
 
-### 13.2 Wails Configuration
+### 12.2 Wails Configuration
 
 ```json
 // wails.json
@@ -1712,7 +1545,7 @@ func (a *App) GetAuthToken() string
 }
 ```
 
-### 13.3 Event Emission to Frontend
+### 12.3 Event Emission to Frontend
 
 Wails provides `runtime.EventsEmit` to push events from Go to the Svelte frontend:
 
@@ -1747,7 +1580,7 @@ func (a *App) OnStartup(ctx context.Context) {
 }
 ```
 
-### 13.4 System Tray
+### 12.4 System Tray
 
 Wails v2 supports system tray natively:
 
@@ -1796,42 +1629,25 @@ func launchGUI() {
 }
 ```
 
-### 13.5 Startup Sequence (GUI Mode)
+### 12.5 Startup Sequence
 
 ```
-1. Parse CLI args → detect GUI mode
+1. Probe HTTP server at configured port → if reachable, send POST /api/window/show and exit
 2. Load config.json (create with defaults if missing)
-3. Check PID file → if daemon already running, bring existing window to front and exit
-4. Write PID file
-5. Open SQLite database, run migrations
-6. Create Engine (resumes interrupted downloads from DB)
-7. Create Queue Manager, start its run loop
-8. Create HTTP Server, start listening on configured port
-9. Create Wails App, bind methods
-10. Launch Wails window + system tray
-11. Engine.Start() → resume paused/active downloads from DB
-```
-
-### 13.6 Startup Sequence (Headless Mode)
-
-```
-1. Parse CLI args → detect headless mode
-2. Load config.json
-3. Check PID file → if daemon already running, error and exit
-4. Write PID file
-5. Open SQLite database, run migrations
-6. Create Engine
-7. Create Queue Manager, start its run loop
-8. Create HTTP Server, start listening
-9. Engine.Start() → resume downloads
-10. Block on signal (SIGTERM, SIGINT) → Shutdown()
+3. Open SQLite database, run migrations
+4. Create Engine (resumes interrupted downloads from DB)
+5. Create Queue Manager, start its run loop
+6. Create HTTP Server, start listening on configured port
+7. Create Wails App, bind methods
+8. Launch Wails window + system tray
+9. Engine.Start() → resume paused/active downloads from DB
 ```
 
 ---
 
-## 14. Svelte Frontend
+## 13. Svelte Frontend
 
-### 14.1 Technology Stack
+### 13.1 Technology Stack
 
 | Tool | Version | Purpose |
 |------|---------|---------|
@@ -1841,7 +1657,7 @@ func launchGUI() {
 | Tailwind CSS | 4.x | Styling |
 | Wails Runtime | (bundled) | IPC calls and event listeners |
 
-### 14.2 State Management
+### 13.2 State Management
 
 Use Svelte 5 runes (`$state`, `$derived`, `$effect`) for reactive state. No external state management library.
 
@@ -1888,7 +1704,7 @@ EventsOn('download:removed', (id: string) => {
 });
 ```
 
-### 14.3 Component Hierarchy
+### 13.3 Component Hierarchy
 
 ```
 App.svelte
@@ -1904,7 +1720,7 @@ App.svelte
 └── StatusBar.svelte            # Bottom bar: active count, total speed, disk space
 ```
 
-### 14.4 Key Components
+### 13.4 Key Components
 
 **DownloadRow.svelte:**
 
@@ -1936,7 +1752,7 @@ Sequence when opened:
 5. User can modify filename, save directory, segment count, speed limit.
 6. "Download" button submits to `App.AddDownload()`.
 
-### 14.5 Formatting Utilities
+### 13.5 Formatting Utilities
 
 ```typescript
 // frontend/src/lib/utils/format.ts
@@ -1958,7 +1774,7 @@ export function truncateFilename(name: string, maxLen: number): string
 // Preserves extension visibility by truncating the middle
 ```
 
-### 14.6 Keyboard Shortcuts
+### 13.6 Keyboard Shortcuts
 
 Handled in `App.svelte` via `svelte:window` event listener:
 
@@ -1977,7 +1793,7 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 ```
 
-### 14.7 Theme Support
+### 13.7 Theme Support
 
 Tailwind CSS with `darkMode: 'class'` strategy:
 
@@ -1998,9 +1814,9 @@ System theme changes are detected via `matchMedia` listener and applied in real 
 
 ---
 
-## 15. Browser Extension
+## 14. Browser Extension
 
-### 15.1 Manifest
+### 14.1 Manifest
 
 ```json
 {
@@ -2054,7 +1870,7 @@ System theme changes are detected via `matchMedia` listener and applied in real 
 | `notifications` | Show notifications when Bolt is unreachable |
 | `<all_urls>` host permission | Required to read cookies from any domain |
 
-### 15.2 Service Worker (background.js)
+### 14.2 Service Worker (background.js)
 
 ```javascript
 // extension/background.js
@@ -2192,7 +2008,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 ```
 
-### 15.3 Extension Popup
+### 14.3 Extension Popup
 
 **Layout (400x300):**
 
@@ -2224,7 +2040,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 - Click a download → sends message to open Bolt GUI window (via `sendToBolt` or system command).
 - Connection status: green dot = reachable, red dot = unreachable (checked via fetch to `/api/stats`).
 
-### 15.4 Link Refresh (Tier 2) in Extension
+### 14.4 Link Refresh (Tier 2) in Extension
 
 ```javascript
 // In background.js — refresh matching logic
@@ -2277,9 +2093,9 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
 ---
 
-## 16. Concurrency Model
+## 15. Concurrency Model
 
-### 16.1 Goroutine Map
+### 15.1 Goroutine Map
 
 ```
 main goroutine
@@ -2301,7 +2117,7 @@ main goroutine
 - Per download: 17 (16 segments + 1 aggregator)
 - Total: ~60 goroutines
 
-### 16.2 Channel Usage
+### 15.2 Channel Usage
 
 | Channel | Type | Buffer | Purpose |
 |---------|------|--------|---------|
@@ -2314,7 +2130,7 @@ main goroutine
 - Event bus subscribers: 256 = generous buffer for slow consumers. If full, messages are dropped (see WebSocket backpressure).
 - `queue.notify`: 1 = only need to know "something changed", not what.
 
-### 16.3 Context Hierarchy
+### 15.3 Context Hierarchy
 
 ```
 main context (cancelled on shutdown signal)
@@ -2327,7 +2143,7 @@ main context (cancelled on shutdown signal)
 
 Cancelling a download's context immediately signals all its segment goroutines to stop. They check `ctx.Done()` in their read loop and exit cleanly.
 
-### 16.4 Shared State & Synchronization
+### 15.4 Shared State & Synchronization
 
 | Shared State | Protected By | Accessed By |
 |-------------|-------------|-------------|
@@ -2340,9 +2156,9 @@ Cancelling a download's context immediately signals all its segment goroutines t
 
 ---
 
-## 17. Error Handling
+## 16. Error Handling
 
-### 17.1 Error Types
+### 16.1 Error Types
 
 ```go
 // internal/model/errors.go
@@ -2357,14 +2173,12 @@ var (
     ErrMaxRetriesExceeded = errors.New("maximum retries exceeded")
     ErrURLExpired         = errors.New("download URL has expired")
     ErrSizeMismatch       = errors.New("file size mismatch on URL refresh")
-    ErrDaemonNotRunning   = errors.New("bolt daemon is not running")
-    ErrDaemonAlreadyRunning = errors.New("bolt daemon is already running")
     ErrProbeRejected      = errors.New("HEAD request rejected by server")
     ErrDuplicateURL       = errors.New("URL is already queued or active")
 )
 ```
 
-### 17.2 Error Propagation
+### 16.2 Error Propagation
 
 ```
 Segment error → segmentReport.Err
@@ -2383,7 +2197,7 @@ Probe error → returned to caller
     → API: 400 with PROBE_FAILED code
 ```
 
-### 17.3 Logging Strategy
+### 16.3 Logging Strategy
 
 All components use `slog` with structured fields:
 
@@ -2409,15 +2223,15 @@ slog.Error("segment failed",
 - `ERROR`: Failed downloads, unrecoverable errors, panics caught by recovery middleware.
 
 **Output:**
-- GUI mode: logs to `~/.config/bolt/bolt.log` (rotated at 10 MB, keep 3 files).
-- Headless mode: logs to stderr (systemd journal captures this).
+- Logs to `~/.config/bolt/bolt.log` (rotated at 10 MB, keep 3 files).
+- When run via systemd, stderr is captured by the journal.
 - Log level configurable: default `INFO`, `--debug` flag enables `DEBUG`.
 
 ---
 
-## 18. Security
+## 17. Security
 
-### 18.1 Threat Model
+### 17.1 Threat Model
 
 Bolt's HTTP server listens on `127.0.0.1` only. The primary threat is a malicious website making requests to `http://127.0.0.1:6800/api/...` from JavaScript (DNS rebinding or localhost attacks).
 
@@ -2433,7 +2247,7 @@ Bolt's HTTP server listens on `127.0.0.1` only. The primary threat is a maliciou
 | Argument injection via URLs | URLs are passed to `http.NewRequest`, not shell commands; no shell execution with user input |
 | Extension token theft | Token stored in `chrome.storage.local` (not accessible to web pages) |
 
-### 18.2 Host Header Validation
+### 17.2 Host Header Validation
 
 ```go
 func (s *Server) validateHost(next http.Handler) http.Handler {
@@ -2451,7 +2265,7 @@ func (s *Server) validateHost(next http.Handler) http.Handler {
 }
 ```
 
-### 18.3 File Path Sanitization
+### 17.3 File Path Sanitization
 
 ```go
 func sanitizeFilename(name string) string {
@@ -2501,9 +2315,9 @@ func validateDir(dir string) error {
 
 ---
 
-## 19. Testing Strategy
+## 18. Testing Strategy
 
-### 19.1 Test Categories
+### 18.1 Test Categories
 
 | Category | Location | Framework | Description |
 |----------|----------|-----------|-------------|
@@ -2512,7 +2326,7 @@ func validateDir(dir string) error {
 | API tests | `internal/server/*_test.go` | `testing` + `httptest` | Test REST endpoints end-to-end |
 | E2E tests | `tests/e2e_test.go` | `testing` | Full pipeline: add download via API → verify file on disk |
 
-### 19.2 Mock HTTP Server
+### 18.2 Mock HTTP Server
 
 For testing the download engine, use `httptest.Server` that serves test files with configurable behavior:
 
@@ -2546,7 +2360,7 @@ func NewTestServer(size int64, opts ...Option) *TestServer
 | Redirect chain | 3 redirects before final URL |
 | No Content-Length | Unknown size, verify single-connection download |
 
-### 19.3 Test Commands
+### 18.3 Test Commands
 
 ```makefile
 # Run all tests
@@ -2568,7 +2382,7 @@ go test -tags=e2e ./tests/...
 make coverage
 ```
 
-### 19.4 Test Data
+### 18.4 Test Data
 
 - `testdata/` contains small test files (1 KB, 1 MB) for unit tests.
 - Integration tests generate test data in memory via `TestServer`.
@@ -2576,9 +2390,9 @@ make coverage
 
 ---
 
-## 20. Build & Distribution
+## 19. Build & Distribution
 
-### 20.1 Makefile
+### 19.1 Makefile
 
 ```makefile
 .PHONY: dev build test lint clean
@@ -2634,7 +2448,7 @@ frontend-lint:
 ci: lint test-race test-integration build
 ```
 
-### 20.2 Build Artifacts
+### 19.2 Build Artifacts
 
 ```
 dist/
@@ -2643,7 +2457,7 @@ dist/
 └── bolt-capture-firefox.zip       # Firefox browser extension
 ```
 
-### 20.3 Version Injection
+### 19.3 Version Injection
 
 ```go
 // cmd/bolt/main.go
@@ -2651,11 +2465,11 @@ var version = "dev" // overridden by -ldflags at build time
 ```
 
 Used in:
-- `bolt version` CLI output.
+- `bolt version` output.
 - `GET /api/stats` response.
 - GUI window title: "Bolt v1.0.0".
 
-### 20.4 .gitignore
+### 19.4 .gitignore
 
 ```
 # Build output
@@ -2679,26 +2493,25 @@ Thumbs.db
 
 # Config (local dev)
 bolt.db
-bolt.pid
 ```
 
 ---
 
-## 21. Systemd Integration
+## 20. Systemd Integration
 
-### 21.1 Service File
+### 20.1 Service File
 
 ```ini
 # bolt.service — install to ~/.config/systemd/user/bolt.service
 
 [Unit]
-Description=Bolt Download Manager (headless daemon)
+Description=Bolt Download Manager
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/bolt start
+ExecStart=%h/.local/bin/bolt
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
 RestartSec=5
@@ -2721,31 +2534,7 @@ PrivateTmp=yes
 WantedBy=default.target
 ```
 
-### 21.2 Signal Handling (Headless Mode)
-
-```go
-func launchHeadless() {
-    // ... engine, server setup ...
-
-    sigCh := make(chan os.Signal, 1)
-    signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-
-    go server.Start(ctx)
-    go engine.Start(ctx)
-
-    sig := <-sigCh
-    slog.Info("received signal, shutting down", "signal", sig)
-
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-
-    server.Shutdown(shutdownCtx)
-    engine.Shutdown(shutdownCtx)
-    slog.Info("shutdown complete")
-}
-```
-
-### 21.3 Usage
+### 20.2 Usage
 
 ```bash
 # Install service
@@ -2765,43 +2554,9 @@ journalctl --user -u bolt -f
 
 ---
 
-## 22. Appendix
+## 21. Appendix
 
-### 22.1 PID File Management
-
-```go
-// internal/pid/pid.go
-
-func Path() string {
-    return filepath.Join(config.Dir(), "bolt.pid")
-}
-
-func Write() error {
-    return os.WriteFile(Path(), []byte(strconv.Itoa(os.Getpid())), 0644)
-}
-
-func Read() (int, error) {
-    data, err := os.ReadFile(Path())
-    if err != nil { return 0, err }
-    return strconv.Atoi(strings.TrimSpace(string(data)))
-}
-
-func IsRunning() bool {
-    pid, err := Read()
-    if err != nil { return false }
-    process, err := os.FindProcess(pid)
-    if err != nil { return false }
-    // On Unix, FindProcess always succeeds. Check if process exists.
-    err = process.Signal(syscall.Signal(0))
-    return err == nil
-}
-
-func Remove() {
-    os.Remove(Path())
-}
-```
-
-### 22.2 Event Bus
+### 21.1 Event Bus
 
 ```go
 // internal/event/event.go
@@ -2861,7 +2616,7 @@ func (b *Bus) Publish(evt Event) {
 }
 ```
 
-### 22.3 ULID Generation
+### 21.2 ULID Generation
 
 ```go
 // internal/model/id.go
@@ -2878,7 +2633,7 @@ func NewDownloadID() string {
 
 The `d_` prefix makes IDs visually distinguishable and is stripped when parsing. ULIDs are 26 characters (Crockford Base32), lexicographically sortable by creation time.
 
-### 22.4 Human-Readable Byte Sizes
+### 21.3 Human-Readable Byte Sizes
 
 ```go
 func FormatBytes(b int64) string {
@@ -2893,7 +2648,7 @@ func FormatBytes(b int64) string {
 }
 ```
 
-### 22.5 Rate Parsing (CLI Speed Limits)
+### 21.4 Rate Parsing (Speed Limits)
 
 ```go
 // Parse "5M", "500K", "1G" etc. to bytes/sec
@@ -2921,7 +2676,7 @@ func ParseRate(s string) (int64, error) {
 }
 ```
 
-### 22.6 Checksum Verification
+### 21.5 Checksum Verification
 
 Run after download completion (all segments done):
 
@@ -2952,7 +2707,7 @@ func VerifyChecksum(filepath string, algo string, expected string) (bool, error)
 }
 ```
 
-### 22.7 Constants
+### 21.6 Constants
 
 ```go
 const (
@@ -2975,17 +2730,17 @@ const (
 )
 ```
 
-### 22.8 Implementation Phase Mapping
+### 21.7 Implementation Phase Mapping
 
 Cross-reference between this TRD and the PRD's implementation phases:
 
 | Phase | PRD Section | TRD Sections |
 |-------|-------------|-------------|
-| Phase 1 — Engine + CLI | PRD §12, Phase 1 | §4 (Engine), §5 (Queue), §8 (Database), §9 (Config), §12 (CLI) |
-| Phase 2 — Server & Queue | PRD §12, Phase 2 | §10 (HTTP Server), §11 (WebSocket), §7 (Dead Link Refresh Tier 1) |
-| Phase 3 — GUI Core | PRD §12, Phase 3 | §13 (Wails App), §14 (Svelte Frontend) |
-| Phase 4 — Extension | PRD §12, Phase 4 | §15 (Browser Extension), §7 (Dead Link Refresh Tier 2+3) |
-| Phase 5 — P1 Features | PRD §12, Phase 5 | §6 (Speed Limiter), §14.6 (Keyboard Shortcuts), §14.7 (Theme) |
+| Phase 1 — Engine | PRD §11, Phase 1 | §4 (Engine), §5 (Queue), §8 (Database), §9 (Config) |
+| Phase 2 — Server & Queue | PRD §11, Phase 2 | §10 (HTTP Server), §11 (WebSocket), §7 (Dead Link Refresh Tier 1) |
+| Phase 3 — GUI Core | PRD §11, Phase 3 | §12 (Wails App), §13 (Svelte Frontend) |
+| Phase 4 — Extension | PRD §11, Phase 4 | §14 (Browser Extension), §7 (Dead Link Refresh Tier 2+3) |
+| Phase 5 — P1 Features | PRD §11, Phase 5 | §6 (Speed Limiter), §13.6 (Keyboard Shortcuts), §13.7 (Theme) |
 
 ---
 

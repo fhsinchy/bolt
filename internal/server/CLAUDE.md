@@ -29,6 +29,7 @@ HTTP server with REST API and WebSocket for real-time progress. Phase 2 core.
 | PUT | `/api/config` | Update config |
 | GET | `/api/stats` | Get stats |
 | POST | `/api/probe` | Probe URL |
+| POST | `/api/window/show` | Publish WindowShow event, returns ok |
 | GET | `/ws` | WebSocket for real-time events |
 
 ## Auth

@@ -56,6 +56,13 @@ uninstall() {
     rm -f "${DESKTOP_DIR}/bolt.desktop"
     rm -f "${ICON_DIR}/bolt.png"
 
+    if command -v gtk-update-icon-cache > /dev/null 2>&1; then
+        gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
+    fi
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+    fi
+
     if command -v systemctl > /dev/null 2>&1; then
         systemctl --user daemon-reload 2>/dev/null || true
     fi
@@ -238,7 +245,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/bolt start --headless
+ExecStart=%h/.local/bin/bolt --minimized
 Restart=on-failure
 RestartSec=5
 
@@ -253,9 +260,12 @@ UNIT
         warn "systemctl not found — Bolt won't auto-start on boot"
     fi
 
-    # Update icon cache if available
+    # Update icon cache and desktop database
     if command -v gtk-update-icon-cache > /dev/null 2>&1; then
         gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
+    fi
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
     fi
 
     # Verify PATH

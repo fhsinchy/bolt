@@ -8,18 +8,17 @@
 
 | Phase | Status | Completion |
 |-------|--------|------------|
-| Phase 1 — Engine + CLI | **COMPLETE** | 100% |
-| Phase 2 — HTTP Server + Daemon | **COMPLETE** | 100% |
+| Phase 1 — Engine | **COMPLETE** | 100% |
+| Phase 2 — HTTP Server | **COMPLETE** | 100% |
 | Phase 3 — Wails GUI + Frontend | **COMPLETE** | 100% |
 | Phase 4 — Browser Extension | **COMPLETE** | 100% |
 | Phase 5 — Linux-Only Focus Shift | **COMPLETE** | 100% |
 | Phase 6 — P1 Features | **COMPLETE** | 100% |
 | Phase 7 — P2 Features | **COMPLETE** | 100% |
-| Phase 9 — Steam Deck + Decky Plugin | **NOT STARTED** | 0% |
 
 ---
 
-## Phase 1: Download Engine + CLI — COMPLETE
+## Phase 1: Download Engine — COMPLETE
 
 All deliverables built and tested:
 
@@ -29,27 +28,23 @@ All deliverables built and tested:
 - Auto-retry with exponential backoff
 - Filename detection (Content-Disposition, URL path)
 - Progress reporting via event bus
-- Dead link refresh (Tier 3 — manual URL swap via CLI `bolt refresh`)
-- CLI commands: `add`, `list`, `status`, `pause`, `resume`, `cancel`
+- Dead link refresh (Tier 3 — manual URL swap)
 - Integration tests with local HTTP server (`TestIntegration_ExitCriteria`)
 
-## Phase 2: HTTP Server + Daemon — COMPLETE
+## Phase 2: HTTP Server — COMPLETE
 
 All deliverables built and tested:
 
 - REST API with all endpoints (add, list, get, delete, pause, resume, retry, refresh, probe, config, stats)
 - WebSocket progress push
 - Bearer token authentication
-- PID file management (`internal/pid/`)
-- CLI refactored to HTTP client (talks to daemon)
-- Headless daemon mode (`bolt start --headless`)
 
 ## Phase 3: Wails GUI + Svelte Frontend — COMPLETE
 
 All deliverables built:
 
 - Wails app bindings (`internal/app/app.go`)
-- Entry point with GUI/headless/CLI dispatch (`cmd/bolt/main.go`, `cmd/bolt/gui.go`)
+- Entry point with GUI dispatch (`cmd/bolt/main.go`, `cmd/bolt/gui.go`)
 - System tray via `energye/systray` (`internal/tray/`)
 - Tray icon click toggles window visibility
 - Cancel confirmation dialog
@@ -65,7 +60,7 @@ All deliverables built:
 - Service worker / background script — download interception via `downloads.onCreated`
 - Content script (`content.js`) — link click interception for 30+ file types
 - Context menu — "Download with Bolt" on right-click links
-- Header forwarding — Cookie, Referer, User-Agent sent to Bolt daemon
+- Header forwarding — Cookie, Referer, User-Agent sent to Bolt
 - Tier 2 dead link refresh — matches by filename/domain against `/api/downloads?status=refresh`
 - Check-then-cancel safety — verifies Bolt is reachable before cancelling browser download
 - Popup UI — config, connection test, capture toggle
@@ -82,7 +77,6 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 - Removed Windows/macOS code paths from `internal/notify/` (was: `osascript`, PowerShell; now: `notify-send` only)
 - Removed Windows/macOS code paths from `internal/app/` `openPath()` (was: `open`, `cmd /c start`; now: `xdg-open` only)
 - Updated PRD, TRD, README, STATUS, CLAUDE.md to reflect Linux-only focus
-- Added Steam Deck / Decky Plugin as Phase 9
 - Renumbered phases 5-7 → 6-8
 
 ---
@@ -105,8 +99,7 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 | Pause/Resume/Cancel (GUI) | Done |
 | System tray | Done |
 | Dead link refresh (Tier 1 auto) | Done (`internal/engine/refresh.go`) |
-| Dead link refresh (Tier 3 manual) | Done (CLI `refresh` + API endpoint) |
-| CLI | Done |
+| Dead link refresh (Tier 3 manual) | Done (GUI + API endpoint) |
 | Download interception (extension) | Done (`chrome.downloads.onCreated` + content script) |
 | Header forwarding (extension) | Done (Cookie/Referer/User-Agent) |
 | Context menu (extension) | Done ("Download with Bolt") |
@@ -142,16 +135,6 @@ Bolt now targets Linux only. Cross-platform code removed, docs updated.
 |---------|--------|
 | Start on system boot | Done — `packaging/bolt.service` systemd user unit, `make install` / `make uninstall` |
 | Firefox extension | Done (`extensions/firefox/`) |
-
-## Steam Deck + Decky Plugin Status
-
-| Feature | Status |
-|---------|--------|
-| Decky Loader plugin | Not started |
-| SteamOS systemd integration | Not started (existing `bolt.service` should work) |
-| QAM panel UI | Not started |
-
----
 
 ## Other Missing Artifacts
 

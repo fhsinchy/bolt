@@ -258,10 +258,6 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleShowWindow(w http.ResponseWriter, r *http.Request) {
-	if s.headless {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "headless"})
-		return
-	}
 	s.bus.Publish(event.WindowShow{})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -53,6 +53,8 @@ install: build
 	sed 's|Exec=bolt|Exec=$(HOME)/.local/bin/bolt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
 	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
 	cp build/appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
+	-update-desktop-database ~/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
 	systemctl --user enable --now bolt
 
@@ -63,6 +65,8 @@ uninstall:
 	rm -f ~/.config/systemd/user/bolt.service
 	rm -f ~/.local/share/applications/bolt.desktop
 	rm -f ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
+	-update-desktop-database ~/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
 
 clean:

@@ -32,7 +32,6 @@
 - **REST API** — full CRUD over HTTP for scripting and extension integration
 - **WebSocket** — real-time progress push
 - **System tray** — minimize to tray, background operation
-- **CLI** — manage downloads from the terminal
 
 ## Screenshots
 
@@ -113,41 +112,11 @@ This builds the frontend, embeds it into the Go binary, and produces a `./bolt` 
 
 ```bash
 ./bolt              # launch the GUI
-./bolt start --headless   # headless daemon (no window)
-```
-
-## CLI Usage
-
-The CLI communicates with the running daemon over HTTP. Start the GUI or headless daemon first.
-
-```bash
-# Add a download
-bolt add "https://example.com/file.iso"
-bolt add "https://example.com/file.iso" --segments 8 --dir ~/Downloads
-
-# List downloads
-bolt list
-bolt list --status active
-
-# Control downloads
-bolt pause <id>
-bolt resume <id>
-bolt cancel <id>
-bolt cancel <id> --delete-file
-
-# Check status
-bolt status <id>
-
-# Update an expired URL
-bolt refresh <id> "https://example.com/new-url"
-
-# Stop the daemon
-bolt stop
 ```
 
 ## Browser Extension
 
-Bolt ships browser extensions for Chrome and Firefox that intercept downloads and forward them to the running daemon.
+Bolt ships browser extensions for Chrome and Firefox that intercept downloads and forward them to the running Bolt instance.
 
 **Chrome:** Open `chrome://extensions`, enable Developer mode, click "Load unpacked", and select `extensions/chrome/`.
 
@@ -171,25 +140,20 @@ Tests do not require Wails build tags or CGO — `go test ./...` works on any sy
 
 ## Architecture
 
-Bolt runs as a single binary with three modes:
-
-- **GUI mode** (default) — Wails window + system tray + HTTP server + download engine
-- **Headless mode** (`--headless`) — HTTP server + download engine, no window
-- **CLI client mode** (`bolt add`, `bolt list`, etc.) — HTTP client that talks to the running daemon
+Bolt runs as a single GUI binary — Wails window + system tray + HTTP server + download engine.
 
 ```
-cmd/bolt/           Entry point and mode dispatch
+cmd/bolt/           Entry point (GUI launch)
 internal/
   engine/           Download engine (segmented downloading, retry, resume)
   queue/            Queue manager (concurrency control)
-  server/           HTTP server (REST API + WebSocket)
+  server/           HTTP server (REST API + WebSocket, for browser extension)
   app/              Wails IPC bindings
   db/               SQLite data access layer
   config/           Configuration management
   event/            Event bus (pub/sub)
-  cli/              CLI HTTP client
-  pid/              PID file management
   tray/             System tray
+  notify/           Desktop notifications
   model/            Shared types
 frontend/           Svelte 5 + TypeScript + Tailwind CSS
 ```
@@ -198,13 +162,12 @@ frontend/           Svelte 5 + TypeScript + Tailwind CSS
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1. Engine + CLI | Segmented downloads, pause/resume, retry, queue, CLI | Complete |
-| 2. HTTP Server | REST API, WebSocket progress, daemon mode | Complete |
+| 1. Engine | Segmented downloads, pause/resume, retry, queue | Complete |
+| 2. HTTP Server | REST API, WebSocket progress | Complete |
 | 3. Desktop GUI | Wails app, system tray, Svelte frontend | Complete |
 | 4. Browser Extension | Chrome + Firefox download interception | Complete |
 | 5. Linux-Only Shift | Remove cross-platform code, update docs, Linux-only focus | Complete |
 | 6. P1 Features | Speed limiter, dark theme, notifications, keyboard shortcuts, batch import, download details | Complete |
-| 7. Steam Deck | Decky Loader plugin, SteamOS optimization | Planned |
 
 See `docs/STATUS.md` for detailed per-feature status.
 

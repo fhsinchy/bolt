@@ -23,12 +23,12 @@ Bolt is a desktop download manager that accelerates file downloads through segme
 
 ### 1.3 Name Rationale
 
-"Bolt" — fast, direct, and descriptive. Implies speed without being generic. The CLI binary is `bolt`, the GUI app is "Bolt", and the browser extension is "Bolt Capture".
+"Bolt" — fast, direct, and descriptive. Implies speed without being generic. The binary is `bolt`, the GUI app is "Bolt", and the browser extension is "Bolt Capture".
 
 ### 1.4 Target Users
 
 - Power users who regularly download large files (ISOs, datasets, software packages, media)
-- Developers and sysadmins who want a lightweight alternative to Aria2
+- Developers and sysadmins who want a lightweight, modern alternative to Aria2
 - Anyone frustrated with browser-native download managers that don't support resuming, segmentation, or queuing
 
 ---
@@ -84,18 +84,10 @@ Bolt is a desktop download manager that accelerates file downloads through segme
 | GUI | Wails v2 + Svelte or React | Native desktop window, system tray |
 | Database | SQLite via `modernc.org/sqlite` | Download history, segment state, settings |
 | Browser Extension | Manifest V3 (JS) | Intercept browser downloads, context menu |
-| CLI | Go (same binary) | `bolt add`, `bolt list`, `bolt pause`, etc. |
 
 ### 2.3 Single Binary Design
 
-Bolt ships as a single binary. The same binary serves as both the GUI application and the CLI client.
-
-- `bolt` or `bolt start` — launches the GUI app (Wails window + tray icon + HTTP server)
-- `bolt add <url>` — sends a download request to the running daemon via HTTP
-- `bolt list` — queries active/queued downloads from the daemon
-- `bolt pause <id>`, `bolt resume <id>`, `bolt cancel <id>` — control downloads
-
-If the GUI is not running, CLI commands that require the daemon will print an error with instructions to start it.
+Bolt ships as a single binary. Running `bolt` or `bolt start` launches the GUI app (Wails window + tray icon + HTTP server). The HTTP server remains available for browser extension communication.
 
 ---
 
@@ -235,7 +227,7 @@ These are the features that make Bolt worth using over a browser's built-in down
 | Filename detection | Engine | Content-Disposition → URL path → fallback |
 | Download queue | Engine | FIFO queue with configurable max concurrent downloads |
 | REST API | Server | Full CRUD for downloads, pause/resume/cancel |
-| Bearer token auth | Server | Shared secret between extension and daemon |
+| Bearer token auth | Server | Shared secret between extension and server |
 | WebSocket progress | Server | Real-time progress push |
 | Download list view | GUI | Table with progress, speed, ETA, status, actions |
 | Add download dialog | GUI | URL input, filename, directory, segment count |
@@ -245,7 +237,6 @@ These are the features that make Bolt worth using over a browser's built-in down
 | Header forwarding | Extension | Cookies, referer, user-agent sent to Bolt |
 | Context menu | Extension | "Download with Bolt" on links |
 | Dead link refresh | Engine + Extension | Three-tier URL refresh: auto → extension-assisted → manual paste |
-| CLI | CLI | `bolt add`, `bolt list`, `bolt pause`, `bolt resume`, `bolt status` |
 
 ### P1 — Important (Ship in v1 if time allows, otherwise fast-follow)
 
@@ -278,7 +269,6 @@ Useful features that can wait. Add them as you feel the need.
 | Settings panel (full) | GUI | All configurable options in one place |
 | Sound on completion | GUI | Audio notification |
 | Extension options page | Extension | Full settings UI in extension |
-| `--json` output | CLI | Machine-readable output for scripting |
 
 ### P3 — Low Priority (Whenever)
 
@@ -531,7 +521,7 @@ When clicked, extract the link's `href`, current page URL (as referer), and cook
 
 A small popup (400×300) showing:
 
-- Connection status (green dot if Bolt daemon is reachable, red if not)
+- Connection status (green dot if Bolt is reachable, red if not)
 - Toggle for capture on/off
 - List of recent/active downloads with progress bars
 - Each entry shows: filename (truncated), progress %, speed
@@ -559,53 +549,7 @@ Use `chrome.cookies.getAll()` for the download URL's domain and `chrome.webReque
 
 ---
 
-## 7. CLI Interface
-
-### 7.1 Commands
-
-```
-bolt                         Launch GUI (start daemon if not running)
-bolt start                   Start daemon without GUI (headless mode)
-bolt stop                    Stop the running daemon
-bolt add <url> [flags]       Add a download
-bolt list [--status=active]  List downloads
-bolt status <id>             Show detailed status of a download
-bolt pause <id|all>          Pause download(s)
-bolt resume <id|all>         Resume download(s)
-bolt cancel <id>             Cancel and remove a download
-bolt config                  Show current configuration
-bolt config set <key> <val>  Update a config value
-```
-
-### 7.2 `bolt add` Flags
-
-```
-bolt add "https://example.com/file.zip" \
-  --dir ~/Downloads \
-  --filename custom-name.zip \
-  --segments 16 \
-  --speed-limit 5M \
-  --checksum sha256:abc123...
-```
-
-### 7.3 Output
-
-CLI output should be human-readable by default, with a `--json` flag for scripting:
-
-```
-$ bolt list
-ID         Filename          Size     Progress  Speed      Status
-d_abc123   ubuntu-24.04.iso  4.7 GB   47%       12.3 MB/s  Active
-d_def456   node-v22.tar.gz   48 MB    100%      —          Completed
-d_ghi789   dataset.csv       1.2 GB   0%        —          Queued
-
-$ bolt list --json
-[{"id": "d_abc123", ...}]
-```
-
----
-
-## 8. Data Model
+## 7. Data Model
 
 ### 8.1 SQLite Schema
 
@@ -683,13 +627,12 @@ Location: `~/.config/bolt/config.json`
 ```
 ~/.config/bolt/
 ├── config.json
-├── bolt.db          (SQLite database)
-└── bolt.pid         (PID file when daemon is running)
+└── bolt.db          (SQLite database)
 ```
 
 ---
 
-## 9. Technical Specifications
+## 8. Technical Specifications
 
 ### 9.1 Download Engine Details
 
@@ -757,11 +700,11 @@ Implemented via `systemctl poweroff` / `systemctl suspend`.
 
 ---
 
-## 10. Platform Support
+## 9. Platform Support
 
 ### 10.1 Target Platform
 
-Bolt targets **Linux only** (x86_64, aarch64). This is a deliberate focus decision — Linux lacks a good, modern download manager, and going deep on one platform enables tighter desktop integration (D-Bus notifications, XDG portals, systemd, Steam Deck / Decky Loader) rather than spreading thin across three.
+Bolt targets **Linux only** (x86_64, aarch64). This is a deliberate focus decision — Linux lacks a good, modern download manager, and going deep on one platform enables tighter desktop integration (D-Bus notifications, XDG portals, systemd) rather than spreading thin across three.
 
 | Platform | Status | Notes |
 |----------|--------|-------|
@@ -777,7 +720,7 @@ Bolt targets **Linux only** (x86_64, aarch64). This is a deliberate focus decisi
 
 ---
 
-## 11. Build & Distribution
+## 10. Build & Distribution
 
 ### 11.1 Project Structure
 
@@ -785,7 +728,7 @@ Bolt targets **Linux only** (x86_64, aarch64). This is a deliberate focus decisi
 bolt/
 ├── cmd/
 │   └── bolt/
-│       └── main.go              # Entry point (CLI + GUI + daemon)
+│       └── main.go              # Entry point (GUI)
 ├── internal/
 │   ├── engine/
 │   │   ├── engine.go            # Download engine core
@@ -857,13 +800,13 @@ make build-extension             # Build Chrome + Firefox extension zips
 
 ---
 
-## 12. Implementation Phases
+## 11. Implementation Phases
 
 Phases are ordered by the priority matrix (Section 4). Each phase ships something usable.
 
-### Phase 1 — Download Engine + CLI (P0) — Week 1–2
+### Phase 1 — Download Engine (P0) — Week 1–2
 
-Build the engine as a standalone Go package with a CLI interface for testing.
+Build the engine as a standalone Go package.
 
 **Deliverables (all P0):**
 
@@ -873,8 +816,7 @@ Build the engine as a standalone Go package with a CLI interface for testing.
 - Auto-retry with exponential backoff per segment
 - Filename detection (Content-Disposition, URL path)
 - Progress reporting via channels
-- Dead link refresh — Tier 3 (manual URL swap via CLI: `bolt refresh <id> <new-url>`)
-- Basic CLI: `bolt add <url>`, `bolt list`, `bolt status <id>`, `bolt pause`, `bolt resume`
+- Dead link refresh — Tier 3 (manual URL swap)
 - Unit tests for engine, integration tests with a local HTTP server
 
 **Exit criteria:** Can download a 1 GB file from a CDN in 16 segments, pause, kill the process, restart, and resume to completion.
@@ -890,7 +832,6 @@ Wrap the engine with the HTTP API and add queue management.
 - Bearer token authentication
 - Download queue with configurable max concurrent downloads
 - Dead link refresh — Tier 1 (automatic referer-based URL refresh on expiry detection)
-- CLI commands talk to daemon via HTTP
 
 **Exit criteria:** Can add downloads via `curl` to the API, see progress via WebSocket, and queue respects concurrency limits.
 
@@ -906,7 +847,7 @@ Build the Wails application with P0 GUI features only.
 - System tray with minimize-to-tray
 - Basic settings (download dir, max concurrent, default segments, server port, auth token)
 
-**Exit criteria:** Fully functional desktop app that can manage downloads with core controls, no CLI needed.
+**Exit criteria:** Fully functional desktop app that can manage downloads with core controls.
 
 ### Phase 4 — Browser Extension Core (P0) — Week 5–6
 
@@ -929,7 +870,6 @@ Remove cross-platform code and update documentation to reflect Linux-only target
 
 - Remove Windows/macOS code paths from `internal/notify/` and `internal/app/`
 - Update PRD, TRD, README, STATUS, CLAUDE.md to reflect Linux-only focus
-- Add Steam Deck / Decky Plugin as Phase 9
 
 **Exit criteria:** No Windows/macOS code paths remain. All docs reflect Linux-only focus.
 
@@ -963,7 +903,6 @@ Add incrementally as needed. No fixed timeline.
 - Full settings panel
 - Sound on completion
 - Extension options page
-- CLI `--json` output
 
 ### Phase 8 — P3 Features — Whenever
 
@@ -973,20 +912,9 @@ Low priority, add only if you feel the need.
 - Proxy support (HTTP/SOCKS5)
 - Auto-shutdown/sleep after downloads complete
 
-### Phase 9 — Steam Deck + Decky Plugin
-
-Dedicated phase for Steam Deck optimization.
-
-**Deliverables:**
-
-- Decky Loader plugin (Python backend + React frontend)
-- Bolt daemon optimized for SteamOS (Arch-based, systemd)
-- QAM panel showing download progress, pause/resume controls
-- Documentation for SteamOS / Steam Deck setup
-
 ---
 
-## 13. Success Metrics
+## 12. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -1000,7 +928,7 @@ Dedicated phase for Steam Deck optimization.
 
 ---
 
-## 14. Risks & Mitigations
+## 13. Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
@@ -1012,7 +940,7 @@ Dedicated phase for Steam Deck optimization.
 
 ---
 
-## 15. Out of Scope (Permanently)
+## 14. Out of Scope (Permanently)
 
 The following will not be implemented:
 
