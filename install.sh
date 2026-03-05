@@ -180,7 +180,7 @@ main() {
     info "Latest version: ${version}"
 
     # Build download URL
-    tarball="bolt-linux-${arch}.tar.gz"
+    tarball="bolt-linux-${arch}-${version}.tar.gz"
     url="https://github.com/${REPO}/releases/download/${version}/${tarball}"
 
     # Download to temp directory
@@ -193,16 +193,17 @@ main() {
     # Extract
     info "Extracting..."
     tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+    extracted="${tmpdir}/bolt-linux-${arch}"
 
     # Install binary
     mkdir -p "$INSTALL_DIR"
-    install -m 755 "${tmpdir}/bolt" "${INSTALL_DIR}/${BINARY_NAME}"
+    install -m 755 "${extracted}/bolt" "${INSTALL_DIR}/${BINARY_NAME}"
     info "Installed binary to ${INSTALL_DIR}/${BINARY_NAME}"
 
     # Install desktop entry (substitute absolute path for Exec)
     mkdir -p "$DESKTOP_DIR"
-    if [ -f "${tmpdir}/bolt.desktop" ]; then
-        sed "s|Exec=bolt|Exec=${INSTALL_DIR}/bolt|" "${tmpdir}/bolt.desktop" \
+    if [ -f "${extracted}/bolt.desktop" ]; then
+        sed "s|Exec=bolt|Exec=${INSTALL_DIR}/bolt|" "${extracted}/bolt.desktop" \
             > "${DESKTOP_DIR}/bolt.desktop"
     else
         # Generate inline if not in tarball
@@ -222,8 +223,8 @@ DESKTOP
 
     # Install icon
     mkdir -p "$ICON_DIR"
-    if [ -f "${tmpdir}/appicon.png" ]; then
-        cp "${tmpdir}/appicon.png" "${ICON_DIR}/bolt.png"
+    if [ -f "${extracted}/appicon.png" ]; then
+        cp "${extracted}/appicon.png" "${ICON_DIR}/bolt.png"
         info "Installed icon"
     else
         warn "Icon not found in release — Wayland app icon may not display"
@@ -233,8 +234,8 @@ DESKTOP
     if command -v systemctl > /dev/null 2>&1; then
         unit_dir="${HOME}/.config/systemd/user"
         mkdir -p "$unit_dir"
-        if [ -f "${tmpdir}/bolt.service" ]; then
-            cp "${tmpdir}/bolt.service" "${unit_dir}/bolt.service"
+        if [ -f "${extracted}/bolt.service" ]; then
+            cp "${extracted}/bolt.service" "${unit_dir}/bolt.service"
         else
             # Generate inline if not in tarball
             cat > "${unit_dir}/bolt.service" << 'UNIT'
