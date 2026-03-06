@@ -474,7 +474,8 @@ func (e *Engine) ListDownloads(ctx context.Context, filter model.ListFilter) ([]
 	return e.store.ListDownloads(ctx, filter.Status, filter.Limit, filter.Offset)
 }
 
-// Start resumes all previously-active downloads from the DB (crash recovery).
+// Start sets all previously-active downloads to queued status (crash recovery).
+// The queue manager will start them according to the concurrency limit.
 func (e *Engine) Start(ctx context.Context) error {
 	downloads, err := e.store.ListDownloads(ctx, string(model.StatusActive), 0, 0)
 	if err != nil {
@@ -482,11 +483,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 
 	for i := range downloads {
-		segments, err := e.store.GetSegments(ctx, downloads[i].ID)
-		if err != nil {
-			continue
-		}
-		_ = e.startDownload(ctx, &downloads[i], segments)
+		_ = e.store.UpdateDownloadStatus(ctx, downloads[i].ID, model.StatusQueued, "")
 	}
 
 	return nil

@@ -113,7 +113,7 @@ func (s *Server) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.engine.ResumeDownload(r.Context(), id); err != nil {
+	if err := s.queue.EnqueueResume(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -126,7 +126,7 @@ func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.engine.RetryDownload(r.Context(), id); err != nil {
+	if err := s.queue.EnqueueResume(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}

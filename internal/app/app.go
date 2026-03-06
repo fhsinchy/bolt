@@ -211,9 +211,9 @@ func (a *App) PauseDownload(id string) error {
 	return a.engine.PauseDownload(context.Background(), id)
 }
 
-// ResumeDownload resumes a paused download.
+// ResumeDownload enqueues a paused download for resumption via the queue.
 func (a *App) ResumeDownload(id string) error {
-	return a.engine.ResumeDownload(context.Background(), id)
+	return a.queue.EnqueueResume(context.Background(), id)
 }
 
 // CancelDownload stops and removes a download.
@@ -221,9 +221,9 @@ func (a *App) CancelDownload(id string, deleteFile bool) error {
 	return a.engine.CancelDownload(context.Background(), id, deleteFile)
 }
 
-// RetryDownload retries a failed download.
+// RetryDownload enqueues a failed download for retry via the queue.
 func (a *App) RetryDownload(id string) error {
-	return a.engine.RetryDownload(context.Background(), id)
+	return a.queue.EnqueueResume(context.Background(), id)
 }
 
 // ReorderDownloads updates the queue order of downloads.
@@ -378,18 +378,9 @@ func (a *App) PauseAll() error {
 	return nil
 }
 
-// ResumeAll resumes all paused downloads.
+// ResumeAll enqueues all paused downloads for resumption via the queue.
 func (a *App) ResumeAll() error {
-	downloads, err := a.engine.ListDownloads(context.Background(), model.ListFilter{
-		Status: string(model.StatusPaused),
-	})
-	if err != nil {
-		return err
-	}
-	for _, dl := range downloads {
-		_ = a.engine.ResumeDownload(context.Background(), dl.ID)
-	}
-	return nil
+	return a.queue.EnqueueResumeAll(context.Background())
 }
 
 // ClearCompleted removes all completed downloads.

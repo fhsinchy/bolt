@@ -146,7 +146,7 @@ export function initEventListeners() {
   });
 
   runtime.EventsOn("download_resumed", (data: { id: string }) => {
-    updateDownloadStatus(data.id, "active");
+    updateDownloadStatus(data.id, "queued");
   });
 
   runtime.EventsOn("download_removed", (data: { id: string }) => {

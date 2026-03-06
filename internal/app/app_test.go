@@ -39,6 +39,8 @@ func setupTestApp(t *testing.T) *App {
 
 	queueMgr := queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return eng.PauseDownload(ctx, id)
 	})
 
 	// Run queue loop in background so enqueued downloads are started.
@@ -220,6 +222,8 @@ func TestClearCompleted(t *testing.T) {
 	defer queueCancel()
 	a.queue = queue.New(a.store, a.bus, a.cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return a.engine.StartDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return a.engine.PauseDownload(ctx, id)
 	})
 	go a.queue.Run(queueCtx)
 

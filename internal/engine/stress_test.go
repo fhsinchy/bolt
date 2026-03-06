@@ -48,6 +48,8 @@ func TestStress_ConcurrentQueuePressure(t *testing.T) {
 
 	queueMgr := queue.New(store, bus, maxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return eng.PauseDownload(ctx, id)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

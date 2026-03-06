@@ -109,9 +109,14 @@ func setupDaemon() *daemon {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var queueMgr *queue.Manager
-	queueMgr = queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
-		return eng.StartDownload(ctx, id)
-	})
+	queueMgr = queue.New(store, bus, cfg.MaxConcurrent,
+		func(ctx context.Context, id string) error {
+			return eng.StartDownload(ctx, id)
+		},
+		func(ctx context.Context, id string) error {
+			return eng.PauseDownload(ctx, id)
+		},
+	)
 
 	// 4. Wire queue completion
 	ch, subID := bus.Subscribe()

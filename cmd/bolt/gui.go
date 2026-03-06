@@ -53,10 +53,11 @@ func launchGUI(minimized bool) {
 		// Server bound successfully
 	}
 
-	// Resume interrupted downloads
+	// Re-queue interrupted downloads (crash recovery)
 	if err := d.engine.Start(d.ctx); err != nil {
-		slog.Error("resume interrupted downloads", "error", err)
+		slog.Error("re-queue interrupted downloads", "error", err)
 	}
+	d.queueMgr.Enqueue("") // signal queue to evaluate re-queued downloads
 
 	fmt.Printf("Bolt %s — GUI mode\n", version)
 

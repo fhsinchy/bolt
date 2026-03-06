@@ -62,6 +62,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	var queueMgr *queue.Manager
 	queueMgr = queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return eng.PauseDownload(ctx, id)
 	})
 
 	srv := New(eng, store, cfg, bus, queueMgr)

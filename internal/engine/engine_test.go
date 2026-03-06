@@ -13,6 +13,7 @@ import (
 	"github.com/fhsinchy/bolt/internal/db"
 	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
+	"github.com/fhsinchy/bolt/internal/queue"
 	"github.com/fhsinchy/bolt/internal/testutil"
 )
 
@@ -314,7 +315,8 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		store.Close()
 	}
 
-	// Phase 2: New engine, simulate crash recovery by setting status to active
+	// Phase 2: New engine, simulate crash recovery by setting status to active.
+	// Engine.Start() now sets active to queued; a queue manager starts them.
 	{
 		store, err := db.Open(dbPath)
 		if err != nil {
@@ -333,20 +335,49 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		ch, subID := bus.Subscribe()
 		defer bus.Unsubscribe(subID)
 
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		// Set download to active so Start() picks it up (simulating crash mid-download)
 		_ = store.UpdateDownloadStatus(ctx, dlID, model.StatusActive, "")
 
+		// Create queue manager and wire completion events
+		queueMgr := queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
+			return eng.StartDownload(ctx, id)
+		}, func(ctx context.Context, id string) error {
+			return eng.PauseDownload(ctx, id)
+		})
+
+		go queueMgr.Run(ctx)
+
+		// Wire queue completion
+		go func() {
+			for evt := range ch {
+				switch e := evt.(type) {
+				case event.DownloadCompleted:
+					queueMgr.OnDownloadComplete(e.DownloadID)
+				case event.DownloadFailed:
+					queueMgr.OnDownloadComplete(e.DownloadID)
+				case event.DownloadPaused:
+					queueMgr.OnDownloadComplete(e.DownloadID)
+				}
+			}
+		}()
+
 		if err := eng.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
+		queueMgr.Enqueue("") // signal queue to evaluate re-queued downloads
+
+		// Subscribe again for completion (first sub is used for queue wiring)
+		ch2, subID2 := bus.Subscribe()
+		defer bus.Unsubscribe(subID2)
 
 		timeout := time.After(60 * time.Second)
 		completed := false
 		for !completed {
 			select {
-			case evt := <-ch:
+			case evt := <-ch2:
 				if _, ok := evt.(event.DownloadCompleted); ok {
 					completed = true
 				}
