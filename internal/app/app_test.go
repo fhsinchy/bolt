@@ -66,14 +66,17 @@ func TestAddDownload(t *testing.T) {
 		t.Fatalf("AddDownload: %v", err)
 	}
 
-	if dl.ID == "" {
+	if dl.Download == nil {
+		t.Fatal("expected non-nil download")
+	}
+	if dl.Download.ID == "" {
 		t.Fatal("expected non-empty download ID")
 	}
-	if dl.Filename == "" {
+	if dl.Download.Filename == "" {
 		t.Fatal("expected non-empty filename")
 	}
-	if dl.TotalSize != fileSize {
-		t.Errorf("TotalSize = %d, want %d", dl.TotalSize, fileSize)
+	if dl.Download.TotalSize != fileSize {
+		t.Errorf("TotalSize = %d, want %d", dl.Download.TotalSize, fileSize)
 	}
 }
 
@@ -238,7 +241,7 @@ func TestClearCompleted(t *testing.T) {
 	for !completed {
 		select {
 		case evt := <-ch:
-			if ce, ok := evt.(event.DownloadCompleted); ok && ce.DownloadID == dl.ID {
+			if ce, ok := evt.(event.DownloadCompleted); ok && ce.DownloadID == dl.Download.ID {
 				completed = true
 			}
 		case <-timeout:
@@ -247,7 +250,7 @@ func TestClearCompleted(t *testing.T) {
 	}
 
 	// Verify download is completed.
-	got, err := a.GetDownload(dl.ID)
+	got, err := a.GetDownload(dl.Download.ID)
 	if err != nil {
 		t.Fatalf("GetDownload: %v", err)
 	}

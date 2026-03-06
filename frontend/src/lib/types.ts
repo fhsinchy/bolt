@@ -95,4 +95,11 @@ export interface AddRequest {
   referer_url: string;
   speed_limit: number;
   checksum: Checksum | null;
+  force: boolean;
+}
+
+export interface AddDownloadResult {
+  download: Download | null;
+  duplicate: Download | null;
+  new_url: string;
 }

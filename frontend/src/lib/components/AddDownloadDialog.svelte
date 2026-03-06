@@ -6,10 +6,11 @@
 
   interface Props {
     onClose: () => void;
+    onDuplicate?: (info: any) => void;
     initialUrl?: string;
   }
 
-  let { onClose, initialUrl = "" }: Props = $props();
+  let { onClose, onDuplicate, initialUrl = "" }: Props = $props();
 
   const app = (window as any).go.app.App;
   const cfg = $derived(getConfig());
@@ -86,7 +87,7 @@
     submitError = "";
 
     try {
-      await app.AddDownload({
+      const result = await app.AddDownload({
         url: url.trim(),
         filename: filename,
         dir: dir,
@@ -97,7 +98,20 @@
         checksum: checksumValue.trim()
           ? { algorithm: checksumAlgo, value: checksumValue.trim() }
           : null,
+        force: false,
       });
+      if (result?.duplicate) {
+        onClose();
+        onDuplicate?.({
+          existing_id: result.duplicate.id,
+          filename: result.duplicate.filename,
+          status: result.duplicate.status,
+          new_url: result.new_url || url.trim(),
+          new_headers: null,
+          existing: result.duplicate,
+        });
+        return;
+      }
       onClose();
     } catch (e: any) {
       submitError = e?.message || String(e);

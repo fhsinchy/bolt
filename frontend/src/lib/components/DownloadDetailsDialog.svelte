@@ -174,6 +174,18 @@
     }
   }
 
+  async function openUrl(url: string) {
+    try { await app.OpenURL(url); } catch (e) { console.error("Open URL failed:", e); }
+  }
+
+  async function refreshFromSource() {
+    if (!download?.referer_url) return;
+    try {
+      await app.OpenURL(download.referer_url);
+      await app.SetRefreshStatus(downloadId);
+    } catch (e) { console.error("Refresh from source failed:", e); }
+  }
+
   async function copyToClipboard(text: string) {
     try { await navigator.clipboard.writeText(text); } catch {}
   }
@@ -269,6 +281,9 @@
           {/if}
           {#if download.status === "error"}
             <button onclick={retry} class="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">Retry</button>
+          {/if}
+          {#if (download.status === "error" || download.status === "refresh") && download.referer_url}
+            <button onclick={refreshFromSource} class="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">Refresh from Source</button>
           {/if}
           {#if isCompleted}
             <button onclick={openFile} class="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">Open File</button>
@@ -570,7 +585,9 @@
               {#if download.referer_url}
                 <div class="flex gap-2">
                   <span class="w-24 flex-shrink-0 text-gray-400 dark:text-gray-500 text-right">Referer</span>
-                  <span class="text-gray-700 dark:text-gray-300 font-mono break-all">{download.referer_url}</span>
+                  <span class="text-gray-700 dark:text-gray-300 font-mono break-all">
+                    <button onclick={() => openUrl(download.referer_url)} class="text-blue-600 dark:text-blue-400 hover:underline font-mono text-left break-all">{download.referer_url}</button>
+                  </span>
                 </div>
               {/if}
               {#if download.headers && Object.keys(download.headers).length > 0}

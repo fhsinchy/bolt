@@ -50,6 +50,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/downloads/{id}/resume", s.handleResumeDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/retry", s.handleRetryDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/refresh", s.handleRefreshURL)
+	mux.HandleFunc("POST /api/downloads/{id}/set-refresh", s.handleSetRefresh)
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handleUpdateConfig)
 	mux.HandleFunc("GET /api/stats", s.handleGetStats)

@@ -123,6 +123,21 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		return nil, fmt.Errorf("creating download directory: %w", err)
 	}
 
+	// Check for duplicate filename (before deduplication)
+	if !req.Force {
+		existing, err := e.store.FindByFilename(ctx, filename, dir)
+		if err != nil {
+			return nil, fmt.Errorf("checking duplicates: %w", err)
+		}
+		if existing != nil {
+			return nil, &model.DuplicateDownloadError{
+				Existing:   existing,
+				NewURL:     probeResult.FinalURL,
+				NewHeaders: req.Headers,
+			}
+		}
+	}
+
 	// Deduplicate filename
 	filename = DeduplicateFilename(dir, filename)
 
@@ -157,6 +172,14 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	// Generate ID
 	id := model.NewDownloadID()
 
+	// Extract referer from headers if not set explicitly
+	refererURL := req.RefererURL
+	if refererURL == "" && req.Headers != nil {
+		if ref, ok := req.Headers["Referer"]; ok {
+			refererURL = ref
+		}
+	}
+
 	dl := &model.Download{
 		ID:           id,
 		URL:          probeResult.FinalURL,
@@ -168,7 +191,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		SegmentCount: segCount,
 		SpeedLimit:   req.SpeedLimit,
 		Headers:      req.Headers,
-		RefererURL:   req.RefererURL,
+		RefererURL:   refererURL,
 		Checksum:     req.Checksum,
 		ETag:         probeResult.ETag,
 		LastModified: probeResult.LastModified,
@@ -546,6 +569,19 @@ func (e *Engine) UpdateChecksum(ctx context.Context, id string, checksum *model.
 	}
 	e.mu.Unlock()
 	return nil
+}
+
+// SetRefreshStatus sets a download's status to "refresh".
+// Only valid for error or paused downloads.
+func (e *Engine) SetRefreshStatus(ctx context.Context, id string) error {
+	dl, err := e.store.GetDownload(ctx, id)
+	if err != nil {
+		return err
+	}
+	if dl.Status != model.StatusError && dl.Status != model.StatusPaused {
+		return fmt.Errorf("can only set refresh status on error or paused downloads")
+	}
+	return e.store.UpdateDownloadStatus(ctx, id, model.StatusRefresh, "")
 }
 
 // IsActive returns whether a download is currently running.

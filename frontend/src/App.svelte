@@ -10,6 +10,7 @@
   import SettingsDialog from "./lib/components/SettingsDialog.svelte";
   import BatchImportDialog from "./lib/components/BatchImportDialog.svelte";
   import DownloadDetailsDialog from "./lib/components/DownloadDetailsDialog.svelte";
+  import DuplicateDialog from "./lib/components/DuplicateDialog.svelte";
 
   let showAddDialog = $state(false);
   let showSettings = $state(false);
@@ -17,6 +18,7 @@
   let showDetailsDialog = $state(false);
   let detailsDownloadId = $state("");
   let initialUrl = $state("");
+  let duplicateInfo = $state<any>(null);
 
   const app = (window as any).go?.app?.App;
 
@@ -139,6 +141,9 @@
       runtime.EventsOn("open_settings", () => {
         showSettings = true;
       });
+      runtime.EventsOn("duplicate_detected", (data: any) => {
+        duplicateInfo = data;
+      });
     }
 
     return () => mq.removeEventListener("change", handler);
@@ -167,7 +172,7 @@
 </main>
 
 {#if showAddDialog}
-  <AddDownloadDialog initialUrl={initialUrl} onClose={() => { showAddDialog = false; initialUrl = ""; }} />
+  <AddDownloadDialog initialUrl={initialUrl} onClose={() => { showAddDialog = false; initialUrl = ""; }} onDuplicate={(info) => { duplicateInfo = info; }} />
 {/if}
 
 {#if showSettings}
@@ -180,4 +185,8 @@
 
 {#if showDetailsDialog}
   <DownloadDetailsDialog downloadId={detailsDownloadId} onClose={() => { showDetailsDialog = false; detailsDownloadId = ""; }} />
+{/if}
+
+{#if duplicateInfo}
+  <DuplicateDialog info={duplicateInfo} onClose={() => { duplicateInfo = null; }} />
 {/if}

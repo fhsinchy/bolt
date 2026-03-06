@@ -65,7 +65,7 @@
 
     for (let i = 0; i < urls.length; i++) {
       try {
-        await app.AddDownload({
+        const result = await app.AddDownload({
           url: urls[i],
           filename: "",
           dir: dir,
@@ -74,6 +74,7 @@
           referer_url: "",
           speed_limit: 0,
           checksum: null,
+          force: true,
         });
         results[i] = { url: urls[i], status: "success" };
       } catch (e: any) {

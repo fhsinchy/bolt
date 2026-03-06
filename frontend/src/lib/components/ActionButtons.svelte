@@ -34,6 +34,15 @@
     }
   }
 
+  async function refreshFromSource() {
+    try {
+      await app.OpenURL(download.referer_url);
+      await app.SetRefreshStatus(download.id);
+    } catch (e) {
+      console.error("Refresh from source failed:", e);
+    }
+  }
+
   async function cancel() {
     if (!confirm("Cancel this download and delete the partial file?")) return;
     try {
@@ -119,6 +128,20 @@
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M1 4v6h6" />
         <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+      </svg>
+    </button>
+  {/if}
+
+  {#if (download.status === "error" || download.status === "refresh") && download.referer_url}
+    <button
+      onclick={refreshFromSource}
+      class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+      title="Open download page (will refresh on re-download)"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
       </svg>
     </button>
   {/if}

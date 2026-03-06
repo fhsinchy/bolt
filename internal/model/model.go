@@ -84,6 +84,7 @@ type AddRequest struct {
 	RefererURL string            `json:"referer_url"`
 	SpeedLimit int64             `json:"speed_limit"`
 	Checksum   *Checksum         `json:"checksum"`
+	Force      bool              `json:"force"`
 }
 
 type ListFilter struct {

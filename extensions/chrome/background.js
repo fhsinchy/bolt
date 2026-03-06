@@ -121,6 +121,18 @@ async function sendToBolt(config, body) {
     body: JSON.stringify(body),
   });
 
+  if (resp.status === 409) {
+    const data = await resp.json().catch(() => ({}));
+    if (data.code === 'DUPLICATE_FILENAME') {
+      // Show Bolt window — GUI will handle the duplicate dialog
+      fetch(`${config.serverUrl}/api/window/show`, {
+        method: 'POST',
+        headers,
+      }).catch(() => {});
+      return data;
+    }
+  }
+
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
     throw new Error(err.error || `HTTP ${resp.status}`);
@@ -341,8 +353,13 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
       } else {
         const body = { url, headers: downloadHeaders };
         if (filename) body.filename = filename;
-        await sendToBolt(config, body);
-        showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+        if (referrer) body.referer_url = referrer;
+        const result = await sendToBolt(config, body);
+        if (result?.code === 'DUPLICATE_FILENAME') {
+          showSuccess('Bolt Capture', 'Duplicate detected — check Bolt window');
+        } else {
+          showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+        }
       }
     } catch (err) {
       warn('Send to Bolt failed, falling back to browser download:', err.message);
@@ -417,8 +434,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     } else {
       const body = { url, headers: downloadHeaders };
       if (filename) body.filename = filename;
-      await sendToBolt(config, body);
-      showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+      if (referrer) body.referer_url = referrer;
+      const result = await sendToBolt(config, body);
+      if (result?.code === 'DUPLICATE_FILENAME') {
+        showSuccess('Bolt Capture', 'Duplicate detected — check Bolt window');
+      } else {
+        showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+      }
     }
   } catch (err) {
     warn('Context menu send failed:', err.message);
@@ -454,6 +476,12 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
   if (!shouldCapture(url, config)) {
     log('Skipping (filtered):', url);
+    return;
+  }
+
+  // Skip image MIME types (user is viewing, not downloading)
+  if (downloadItem.mime && downloadItem.mime.startsWith('image/')) {
+    log('Skipping (image MIME type):', url, downloadItem.mime);
     return;
   }
 
@@ -520,8 +548,13 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     } else {
       const body = { url, headers: downloadHeaders };
       if (filename) body.filename = filename;
-      await sendToBolt(config, body);
-      showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+      if (referrer) body.referer_url = referrer;
+      const result = await sendToBolt(config, body);
+      if (result?.code === 'DUPLICATE_FILENAME') {
+        showSuccess('Bolt Capture', 'Duplicate detected — check Bolt window');
+      } else {
+        showSuccess('Bolt Capture', `Sent to Bolt: ${filename || url}`);
+      }
     }
   } catch (err) {
     warn('Send to Bolt failed, re-initiating browser download:', err.message);

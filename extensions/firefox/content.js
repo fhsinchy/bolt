@@ -17,8 +17,6 @@ const DOWNLOAD_EXTENSIONS = [
   // Media
   '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v',
   '.mp3', '.flac', '.wav', '.aac', '.ogg', '.wma', '.m4a',
-  // Images (large)
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp', '.tiff',
   // Torrents
   '.torrent',
 ];
@@ -75,7 +73,6 @@ document.addEventListener('click', (e) => {
   // Ask the background script whether capture is enabled and Bolt is reachable.
   // We preventDefault synchronously so the browser never starts the download.
   e.preventDefault();
-  e.stopImmediatePropagation();
 
   console.log('[Bolt] Intercepted link click:', url);
 

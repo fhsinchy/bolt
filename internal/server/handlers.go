@@ -19,6 +19,23 @@ func (s *Server) handleAddDownload(w http.ResponseWriter, r *http.Request) {
 
 	dl, err := s.engine.AddDownload(r.Context(), req)
 	if err != nil {
+		var dupErr *model.DuplicateDownloadError
+		if errors.As(err, &dupErr) {
+			s.bus.Publish(event.WindowShow{})
+			s.bus.Publish(event.DuplicateDetected{
+				ExistingID: dupErr.Existing.ID,
+				Filename:   dupErr.Existing.Filename,
+				Status:     string(dupErr.Existing.Status),
+				NewURL:     dupErr.NewURL,
+				NewHeaders: dupErr.NewHeaders,
+			})
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"code":     "DUPLICATE_FILENAME",
+				"error":    dupErr.Error(),
+				"existing": dupErr.Existing,
+			})
+			return
+		}
 		mapEngineError(w, err)
 		return
 	}
@@ -138,6 +155,19 @@ func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "refreshed",
+	})
+}
+
+func (s *Server) handleSetRefresh(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	if err := s.engine.SetRefreshStatus(r.Context(), id); err != nil {
+		mapEngineError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "refresh",
 	})
 }
 

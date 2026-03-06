@@ -72,6 +72,17 @@ type RefreshNeeded struct {
 
 func (RefreshNeeded) EventType() string { return "refresh_needed" }
 
+// DuplicateDetected is emitted when a new download matches an existing one by filename.
+type DuplicateDetected struct {
+	ExistingID string
+	Filename   string
+	Status     string
+	NewURL     string
+	NewHeaders map[string]string
+}
+
+func (DuplicateDetected) EventType() string { return "duplicate_detected" }
+
 // WindowShow is emitted to signal the GUI window should be raised.
 type WindowShow struct{}
 

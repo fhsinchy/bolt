@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -100,6 +101,14 @@ func (a *App) OnStartup(ctx context.Context) {
 				wailsRuntime.EventsEmit(ctx, "refresh_needed", map[string]any{
 					"id": e.DownloadID,
 				})
+			case event.DuplicateDetected:
+				wailsRuntime.EventsEmit(ctx, "duplicate_detected", map[string]any{
+					"existing_id": e.ExistingID,
+					"filename":    e.Filename,
+					"status":      e.Status,
+					"new_url":     e.NewURL,
+					"new_headers": e.NewHeaders,
+				})
 			case event.WindowShow:
 				wailsRuntime.WindowShow(ctx)
 				wailsRuntime.WindowUnminimise(ctx)
@@ -118,14 +127,31 @@ func (a *App) OnShutdown(ctx context.Context) {
 
 // --- Download operations ---
 
-// AddDownload creates a new download and enqueues it.
-func (a *App) AddDownload(req model.AddRequest) (*model.Download, error) {
+// AddDownloadResult holds the result of an AddDownload call. If Duplicate is
+// non-nil, it means a download with the same filename already exists.
+type AddDownloadResult struct {
+	Download  *model.Download `json:"download"`
+	Duplicate *model.Download `json:"duplicate"`
+	NewURL    string          `json:"new_url,omitempty"`
+}
+
+// AddDownload creates a new download and enqueues it. If a duplicate filename
+// is detected, returns the existing download in the Duplicate field instead of
+// an error, so the frontend can show a dialog.
+func (a *App) AddDownload(req model.AddRequest) (*AddDownloadResult, error) {
 	dl, err := a.engine.AddDownload(context.Background(), req)
 	if err != nil {
+		var dupErr *model.DuplicateDownloadError
+		if errors.As(err, &dupErr) {
+			return &AddDownloadResult{
+				Duplicate: dupErr.Existing,
+				NewURL:    dupErr.NewURL,
+			}, nil
+		}
 		return nil, err
 	}
 	a.queue.Enqueue(dl.ID)
-	return dl, nil
+	return &AddDownloadResult{Download: dl}, nil
 }
 
 // ListDownloads returns downloads matching the filter.
@@ -208,6 +234,16 @@ func (a *App) ReorderDownloads(orderedIDs []string) error {
 // RefreshURL updates the URL for a failed download.
 func (a *App) RefreshURL(id string, newURL string) error {
 	return a.engine.RefreshURL(context.Background(), id, newURL, nil)
+}
+
+// SetRefreshStatus sets a download's status to "refresh".
+func (a *App) SetRefreshStatus(id string) error {
+	return a.engine.SetRefreshStatus(context.Background(), id)
+}
+
+// OpenURL opens a URL in the default browser.
+func (a *App) OpenURL(url string) error {
+	return exec.Command("xdg-open", url).Start()
 }
 
 // Probe sends a HEAD request to discover metadata about a URL.

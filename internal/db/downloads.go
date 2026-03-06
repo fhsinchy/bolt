@@ -167,6 +167,29 @@ func (s *Store) UpdateDownloadChecksum(ctx context.Context, id string, checksum 
 	return checkRowsAffected(result, id)
 }
 
+// FindByFilename finds a non-completed download with the given filename and directory.
+// Returns nil, nil if no match.
+func (s *Store) FindByFilename(ctx context.Context, filename, dir string) (*model.Download, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, url, filename, dir, total_size, downloaded, status,
+		       segments, speed_limit, headers, referer_url, checksum,
+		       etag, last_modified, error, created_at, completed_at,
+		       queue_order
+		FROM downloads
+		WHERE filename = ? AND dir = ? AND status NOT IN ('completed')
+		ORDER BY created_at DESC
+		LIMIT 1`, filename, dir)
+
+	d, err := scanDownload(row)
+	if err == model.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 // DeleteDownload deletes a download by ID. Segments are cascade-deleted.
 func (s *Store) DeleteDownload(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx,
