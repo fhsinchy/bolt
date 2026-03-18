@@ -28,6 +28,8 @@ cmd/bolt-host/
   socketpath.go        Socket path resolution (duplicates daemon's simple logic)
 ```
 
+Note: The V1 relay passes JSON through opaquely — it does not import `internal/model`. The spec permits importing shared types packages, but V1 does not need them. If a future command requires typed request/response handling, `internal/model` can be imported then.
+
 ### Chrome Extension
 
 ```
@@ -764,11 +766,11 @@ func (h *host) run(r io.Reader) {
 	for {
 		msg, err := readMessage(r)
 		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			if errors.Is(err, io.EOF) {
 				// Extension disconnected — exit cleanly.
 				return
 			}
-			// Malformed input (corrupt length prefix, oversized message, etc.)
+			// Truncated input, corrupt length prefix, oversized message, etc.
 			log.Printf("fatal read error: %v", err)
 			os.Exit(1)
 		}
@@ -1079,7 +1081,17 @@ let reinitiatedUrls = new Set();
 
 // --- Port management ---
 
+// Serializes port initialization. Only one ensurePort() runs at a time;
+// concurrent callers wait for the in-flight attempt to resolve.
+let portPromise = null;
+
 function ensurePort() {
+  if (portPromise) return portPromise;
+  portPromise = _initPort().finally(() => { portPromise = null; });
+  return portPromise;
+}
+
+function _initPort() {
   return new Promise((resolve) => {
     if (port) {
       resolve(port);
@@ -1127,8 +1139,8 @@ function ensurePort() {
       }
       resolve(port);
     });
-  });
-}
+  });  // end _initPort Promise
+}  // end _initPort
 
 function sendCommand(cmd) {
   return new Promise((resolve) => {
@@ -1215,10 +1227,15 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     if (connectionState !== "ready") return;
   }
 
-  // Cancel and erase browser download to avoid stale/canceled entries in Chrome UI
-  chrome.downloads.cancel(downloadItem.id, () => {
+  // Best-effort cancel + erase to avoid stale entries in Chrome download UI.
+  // If cancel fails (download already completed, etc.), we continue with the
+  // handoff anyway — the daemon will handle duplicates.
+  try {
+    await chrome.downloads.cancel(downloadItem.id);
     chrome.downloads.erase({ id: downloadItem.id });
-  });
+  } catch {
+    /* cancel/erase is best-effort */
+  }
 
   const headers = await collectHeaders(url, downloadItem.referrer);
 
