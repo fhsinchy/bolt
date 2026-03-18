@@ -13,6 +13,10 @@ add_executable(bolt-qt
     src/main.cpp
     src/daemonclient.h
     src/daemonclient.cpp
+    src/downloadlistmodel.h
+    src/downloadlistmodel.cpp
+    src/progressdelegate.h
+    src/progressdelegate.cpp
 )
 
 target_link_libraries(bolt-qt PRIVATE
