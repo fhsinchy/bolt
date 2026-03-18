@@ -1,0 +1,13 @@
+{
+  "planPath": "docs/plans/2026-03-19-bolt-qt-gui.md",
+  "tasks": [
+    {"id": 13, "subject": "Task 1: Build system and types", "status": "pending"},
+    {"id": 7, "subject": "Task 2: DaemonClient", "status": "pending", "blockedBy": [13]},
+    {"id": 8, "subject": "Task 3: DownloadListModel and ProgressDelegate", "status": "pending", "blockedBy": [7]},
+    {"id": 9, "subject": "Task 4: MainWindow", "status": "pending", "blockedBy": [7, 8]},
+    {"id": 10, "subject": "Task 5: AddDownloadDialog", "status": "pending", "blockedBy": [7]},
+    {"id": 11, "subject": "Task 6: SettingsDialog", "status": "pending", "blockedBy": [7]},
+    {"id": 14, "subject": "Task 7: Final integration and docs", "status": "pending", "blockedBy": [10, 11]}
+  ],
+  "lastUpdated": "2026-03-19T00:30:00Z"
+}
