@@ -43,21 +43,23 @@ Chrome's native messaging protocol:
 
 **Request envelope:**
 ```json
-{"command": "ping"}
-{"command": "add_download", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2", "User-Agent": "...", "Referer": "..."}, "referer_url": "..."}}
-{"command": "probe", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2"}}}
+{"id": "1", "command": "ping"}
+{"id": "2", "command": "add_download", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2", "User-Agent": "...", "Referer": "..."}, "referer_url": "..."}}
+{"id": "3", "command": "probe", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2"}}}
 ```
 
-Cookies are serialized by the extension into a single `Cookie` header string within the `headers` map (e.g., `"name1=value1; name2=value2"`). User-Agent is included in `headers` when needed for compatibility. The `referer_url` field is the page URL for daemon-side storage; the `Referer` header in `headers` is for the actual HTTP request. bolt-host passes the `data` object directly to the daemon's `POST /api/downloads` or `POST /api/probe` endpoint — it does not transform the payload.
+Each request includes an `id` field (string) for correlation. bolt-host echoes it back in the response. V1 is strictly request/response, but the ID field ensures the protocol is ready for async messages without a breaking change — any future unsolicited messages from bolt-host will have no `id`, making them distinguishable from command responses.
+
+Cookies are serialized by the extension into a single `Cookie` header string within the `headers` map (e.g., `"name1=value1; name2=value2"`). User-Agent is included in `headers` as a best-effort compatibility hint (may not exactly match the UA Chrome used for the original request). The `referer_url` field is the page URL for daemon-side storage; the `Referer` header in `headers` is for the actual HTTP request. bolt-host passes the `data` object directly to the daemon's `POST /api/downloads` or `POST /api/probe` endpoint — it does not transform the payload.
 
 **Response envelope:**
 ```json
-{"command": "ping", "success": true, "data": {"version": "0.4.0", "active_count": 2}}
-{"command": "add_download", "success": true, "data": {"id": "01ABC...", "filename": "file.iso"}}
-{"command": "add_download", "success": false, "error": "duplicate_filename", "data": {"existing_id": "01XYZ..."}}
+{"id": "1", "command": "ping", "success": true, "data": {"version": "0.4.0", "active_count": 2}}
+{"id": "2", "command": "add_download", "success": true, "data": {"id": "01ABC...", "filename": "file.iso"}}
+{"id": "2", "command": "add_download", "success": false, "error": "duplicate_filename", "data": {"existing_id": "01XYZ..."}}
 ```
 
-Every response includes the originating `command` name, a `success` boolean, and either `data` (on success) or `error` plus optional `data` (on failure).
+Every response includes the `id` echoed from the request, the originating `command` name, a `success` boolean, and either `data` (on success) or `error` plus optional `data` (on failure).
 
 ### Error Mapping
 

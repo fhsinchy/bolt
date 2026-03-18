@@ -462,12 +462,14 @@ import (
 
 // command is the incoming request from the Chrome extension.
 type command struct {
+	ID      string           `json:"id,omitempty"` // Request ID for correlation (echo back in response)
 	Command string           `json:"command"`
 	Data    *json.RawMessage `json:"data,omitempty"`
 }
 
 // response is the outgoing response to the Chrome extension.
 type response struct {
+	ID      string           `json:"id,omitempty"` // Echoed from request
 	Command string           `json:"command"`
 	Success bool             `json:"success"`
 	Error   string           `json:"error,omitempty"`
@@ -495,6 +497,7 @@ func newRelay(socketPath string) *relay {
 }
 
 // execute dispatches a command to the daemon and returns a response.
+// The request ID is echoed in every response for client-side correlation.
 func (r *relay) execute(cmd command) (response, error) {
 	switch cmd.Command {
 	case "ping":
@@ -505,6 +508,7 @@ func (r *relay) execute(cmd command) (response, error) {
 		return r.doRequest(cmd, http.MethodPost, "/api/probe", cmd.Data)
 	default:
 		return response{
+			ID:      cmd.ID,
 			Command: cmd.Command,
 			Success: false,
 			Error:   "unknown_command",
@@ -520,7 +524,7 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 
 	req, err := http.NewRequest(method, "http://localhost"+path, bodyReader)
 	if err != nil {
-		return response{Command: cmd.Command, Success: false, Error: "internal_error"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "internal_error"}, nil
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -528,19 +532,20 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return response{Command: cmd.Command, Success: false, Error: "daemon_unavailable"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "daemon_unavailable"}, nil
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return response{Command: cmd.Command, Success: false, Error: "read_error"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "read_error"}, nil
 	}
 
 	data := json.RawMessage(respBody)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return response{
+			ID:      cmd.ID,
 			Command: cmd.Command,
 			Success: true,
 			Data:    &data,
@@ -559,6 +564,7 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 	}
 
 	return response{
+		ID:      cmd.ID,
 		Command: cmd.Command,
 		Success: false,
 		Error:   errCode,
@@ -738,8 +744,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
+	"os"
 	"sync"
 )
 
@@ -756,8 +764,13 @@ func (h *host) run(r io.Reader) {
 	for {
 		msg, err := readMessage(r)
 		if err != nil {
-			// EOF means the extension disconnected — exit cleanly.
-			return
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				// Extension disconnected — exit cleanly.
+				return
+			}
+			// Malformed input (corrupt length prefix, oversized message, etc.)
+			log.Printf("fatal read error: %v", err)
+			os.Exit(1)
 		}
 
 		var cmd command
@@ -888,12 +901,17 @@ Update `install:` — after `cp $(BINARY) ~/.local/bin/`, add:
 ```makefile
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bolt-host ./cmd/bolt-host/
 	cp bolt-host ~/.local/bin/
-	@for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts; do \
-		if [ -d "$$(dirname $$dir)" ]; then \
-			mkdir -p $$dir; \
-			sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
-		fi; \
-	done
+	@if grep -q 'EXTENSION_ID_PLACEHOLDER' packaging/com.fhsinchy.bolt.json; then \
+		echo "WARNING: Native messaging manifest not installed — EXTENSION_ID_PLACEHOLDER not resolved."; \
+		echo "  See Task 8 in docs/plans/2026-03-18-bolt-host-and-chrome-extension.md for setup."; \
+	else \
+		for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts; do \
+			if [ -d "$$(dirname $$dir)" ]; then \
+				mkdir -p $$dir; \
+				sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
+			fi; \
+		done; \
+	fi
 ```
 
 Update `uninstall:` — after `rm -f ~/.local/bin/$(BINARY)`, add:
@@ -983,13 +1001,13 @@ git commit -m "chore: add bolt-host build targets and native messaging manifest 
 
 ---
 
-### Task 5: Chrome extension — manifest and background service worker
+### Task 5: Chrome extension — full rewrite
 
 **Files:**
-- Delete: `extensions/chrome/background.js`, `extensions/chrome/content.js`, `extensions/chrome/manifest.json`, `extensions/chrome/popup/`, `extensions/chrome/welcome/`, `extensions/chrome/PRIVACY.md`
-- Keep: `extensions/chrome/icons/`
-- Create: `extensions/chrome/manifest.json`
-- Create: `extensions/chrome/background.js`
+- Delete: all files in `extensions/chrome/` except `icons/`
+- Create: `extensions/chrome/manifest.json`, `extensions/chrome/background.js`, `extensions/chrome/content.js`, `extensions/chrome/popup/popup.html`, `extensions/chrome/popup/popup.css`, `extensions/chrome/popup/popup.js`
+
+All extension files are created in a single task so the manifest never points at missing files between commits.
 
 - [ ] **Step 1: Delete existing extension files (keep icons)**
 
@@ -1054,7 +1072,8 @@ const HOST_NAME = "com.fhsinchy.bolt";
 // "host_unavailable" | "daemon_unavailable" | "ready"
 let connectionState = "host_unavailable";
 let port = null;
-let pendingCallbacks = [];
+let pendingCallbacks = new Map(); // id -> resolve
+let nextId = 1;
 let failureNotified = false;
 let reinitiatedUrls = new Set();
 
@@ -1078,13 +1097,18 @@ function ensurePort() {
       connectionState = "host_unavailable";
       port = null;
       // Reject all pending callbacks
-      const cbs = pendingCallbacks.splice(0);
-      cbs.forEach((cb) => cb(null));
+      for (const cb of pendingCallbacks.values()) cb(null);
+      pendingCallbacks.clear();
     });
 
     port.onMessage.addListener((msg) => {
-      const cb = pendingCallbacks.shift();
-      if (cb) cb(msg);
+      // Correlate response to request by ID
+      const id = msg?.id;
+      if (id && pendingCallbacks.has(id)) {
+        const cb = pendingCallbacks.get(id);
+        pendingCallbacks.delete(id);
+        cb(msg);
+      }
     });
 
     // Ping to determine state
@@ -1112,7 +1136,9 @@ function sendCommand(cmd) {
       resolve(null);
       return;
     }
-    pendingCallbacks.push(resolve);
+    const id = String(nextId++);
+    cmd.id = id;
+    pendingCallbacks.set(id, resolve);
     port.postMessage(cmd);
   });
 }
@@ -1189,8 +1215,10 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     if (connectionState !== "ready") return;
   }
 
-  // Cancel browser download
-  chrome.downloads.cancel(downloadItem.id);
+  // Cancel and erase browser download to avoid stale/canceled entries in Chrome UI
+  chrome.downloads.cancel(downloadItem.id, () => {
+    chrome.downloads.erase({ id: downloadItem.id });
+  });
 
   const headers = await collectHeaders(url, downloadItem.referrer);
 
@@ -1308,7 +1336,9 @@ async function collectHeaders(url, pageUrl) {
     headers["Referer"] = pageUrl;
   }
 
-  // User-Agent for compatibility with servers that check it
+  // User-Agent as a best-effort compatibility hint. May not exactly match
+  // the UA Chrome used for the original request (can be reduced/frozen in
+  // some environments), but good enough for servers that check it.
   headers["User-Agent"] = navigator.userAgent;
 
   return headers;
@@ -1346,29 +1376,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 Run: `go vet ./...`
 Expected: Clean
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A extensions/chrome/
-git commit -m "feat(extension): add Manifest V3 background service worker with native messaging"
-```
-
-This stages all changes under `extensions/chrome/`: new files (manifest.json, background.js) and deletions (old background.js, content.js, manifest.json, popup/, welcome/, PRIVACY.md). The icons directory is kept.
-
----
-
-### Task 6: Chrome extension — content script
-
-**Files:**
-- Create: `extensions/chrome/content.js`
-
-- [ ] **Step 1: Create content.js**
+- [ ] **Step 5: Create content.js**
 
 Create `extensions/chrome/content.js`:
 
 ```javascript
 // Content script: intercept clicks on download links when capture is enabled.
 // Injected into all pages via manifest.json content_scripts declaration.
+//
+// This is intentionally conservative — it only matches URLs with file extensions
+// in the path. URLs with filenames in query parameters or no extension at all
+// will not be caught here. That is fine: the context menu and downloads.onCreated
+// paths are the primary capture mechanisms. This script is a convenience for
+// explicit link clicks on obvious download links.
 
 const DOWNLOAD_EXTENSIONS = new Set([
   ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz",
@@ -1430,23 +1450,7 @@ document.addEventListener("click", async (e) => {
 }, true);
 ```
 
-- [ ] **Step 2: Commit**
-
-```bash
-git add extensions/chrome/content.js
-git commit -m "feat(extension): add content script for download link interception"
-```
-
----
-
-### Task 7: Chrome extension — popup UI
-
-**Files:**
-- Create: `extensions/chrome/popup/popup.html`
-- Create: `extensions/chrome/popup/popup.css`
-- Create: `extensions/chrome/popup/popup.js`
-
-- [ ] **Step 1: Create popup.html**
+- [ ] **Step 6: Create popup.html**
 
 Create `extensions/chrome/popup/popup.html`:
 
@@ -1508,7 +1512,7 @@ Create `extensions/chrome/popup/popup.html`:
 </html>
 ```
 
-- [ ] **Step 2: Create popup.css**
+- [ ] **Step 7: Create popup.css**
 
 Create `extensions/chrome/popup/popup.css`:
 
@@ -1633,7 +1637,7 @@ body {
 }
 ```
 
-- [ ] **Step 3: Create popup.js**
+- [ ] **Step 8: Create popup.js**
 
 Create `extensions/chrome/popup/popup.js`:
 
@@ -1696,8 +1700,12 @@ async function loadSettings() {
 function parseList(value) {
   return value
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function parseExtensionList(value) {
+  return parseList(value).map((e) => (e.startsWith(".") ? e : "." + e));
 }
 
 // --- Event listeners ---
@@ -1710,8 +1718,8 @@ saveBtn.addEventListener("click", () => {
   const sizeBytes = (parseInt(minSize.value, 10) || 0) * parseInt(sizeUnit.value, 10);
   chrome.storage.local.set({
     minFileSize: sizeBytes,
-    extensionWhitelist: parseList(extWhitelist.value),
-    extensionBlacklist: parseList(extBlacklist.value),
+    extensionWhitelist: parseExtensionList(extWhitelist.value),
+    extensionBlacklist: parseExtensionList(extBlacklist.value),
     domainBlocklist: parseList(domainBlocklist.value),
   });
   saveBtn.textContent = "Saved";
@@ -1723,16 +1731,30 @@ updateStatus();
 loadSettings();
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 9: Verify Go tooling ignores extension files**
+
+Run: `go vet ./...`
+Expected: Clean
+
+- [ ] **Step 10: Commit entire extension rewrite**
 
 ```bash
-git add extensions/chrome/popup/
-git commit -m "feat(extension): add popup UI with status, capture toggle, and filters"
+git add -A extensions/chrome/
+git commit -m "feat(extension): rewrite Chrome extension for native messaging
+
+Delete old HTTP-based extension. Fresh Manifest V3 implementation with:
+- native messaging to bolt-host (connectNative)
+- context menu 'Download with Bolt'
+- optional auto-capture with filters
+- graceful fallback when Bolt unavailable
+- minimal popup with status, capture toggle, filters"
 ```
+
+This stages all changes under `extensions/chrome/`: new files and deletions of old code. The icons directory is kept.
 
 ---
 
-### Task 8: Final verification and cleanup
+### Task 6: Final verification and cleanup
 
 **Files:**
 - Verify all
@@ -1770,7 +1792,7 @@ Expected: All files exist
 - [ ] **Step 7: Verify git status**
 
 Run: `git status`
-Expected: Clean working tree (only untracked `docs/` if not committed)
+Expected: Clean working tree
 
 - [ ] **Step 8: Manual extension load test**
 
