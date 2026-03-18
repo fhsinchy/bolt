@@ -1142,6 +1142,8 @@ function _initPort() {
   });  // end _initPort Promise
 }  // end _initPort
 
+const COMMAND_TIMEOUT_MS = 15000; // 15s — longer than bolt-host's 10s HTTP timeout
+
 function sendCommand(cmd) {
   return new Promise((resolve) => {
     if (!port) {
@@ -1150,7 +1152,16 @@ function sendCommand(cmd) {
     }
     const id = String(nextId++);
     cmd.id = id;
-    pendingCallbacks.set(id, resolve);
+
+    const timer = setTimeout(() => {
+      pendingCallbacks.delete(id);
+      resolve(null); // treat timeout as failure
+    }, COMMAND_TIMEOUT_MS);
+
+    pendingCallbacks.set(id, (msg) => {
+      clearTimeout(timer);
+      resolve(msg);
+    });
     port.postMessage(cmd);
   });
 }
@@ -1442,9 +1453,22 @@ function isDownloadLink(url) {
   return DOWNLOAD_EXTENSIONS.has(ext);
 }
 
-document.addEventListener("click", async (e) => {
+// Cache capture state so we can check synchronously in the click handler.
+// Updated on storage changes and on initial load.
+let captureEnabled = false;
+chrome.storage.local.get({ captureEnabled: false }, (s) => {
+  captureEnabled = s.captureEnabled;
+});
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.captureEnabled) {
+    captureEnabled = changes.captureEnabled.newValue;
+  }
+});
+
+document.addEventListener("click", (e) => {
   // Only intercept left clicks without modifiers
   if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+  if (!captureEnabled) return;
 
   const link = e.target.closest("a[href]");
   if (!link) return;
@@ -1452,10 +1476,7 @@ document.addEventListener("click", async (e) => {
   const url = link.href;
   if (!isDownloadLink(url)) return;
 
-  // Check if capture is enabled
-  const settings = await chrome.storage.local.get({ captureEnabled: false });
-  if (!settings.captureEnabled) return;
-
+  // preventDefault must be synchronous — no awaits before this point.
   e.preventDefault();
   e.stopPropagation();
 
