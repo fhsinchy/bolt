@@ -73,7 +73,7 @@ clean:
 # --- Qt GUI ---
 
 build-qt:
-	@echo "bolt-qt: not yet buildable"
+	cd bolt-qt && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 
 test-qt:
 	@echo "bolt-qt: no tests yet"

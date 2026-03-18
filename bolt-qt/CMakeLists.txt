@@ -7,17 +7,15 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
 
-# Sources will be added here as the GUI is implemented.
-# add_executable(bolt-qt
-#     src/main.cpp
-# )
-#
-# target_link_libraries(bolt-qt PRIVATE
-#     Qt6::Core
-#     Qt6::Gui
-#     Qt6::Widgets
-#     Qt6::Network
-#     Qt6::WebSockets
-# )
+add_executable(bolt-qt
+    src/main.cpp
+)
+
+target_link_libraries(bolt-qt PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+)
