@@ -11,6 +11,8 @@
 
 **Out of scope (V1):** WebSocket live updates (poll instead), system tray icon, single-instance raise-window, download categories, drag-and-drop reorder, per-download speed limit editing after creation, URL refresh dialog, checksum configuration in add dialog. These are candidates for V2.
 
+**API contract verified:** All daemon endpoints, query parameters (`delete_file`), request fields (`force`), response envelopes, and error codes referenced in this spec have been verified against the current daemon source (`internal/server/handlers.go`, `internal/model/model.go`, `internal/service/service.go`).
+
 ---
 
 ## Architecture
@@ -35,7 +37,7 @@ bolt-qt/src/
 
 1. `DaemonClient` connects to the daemon's Unix socket, sends HTTP requests, parses JSON responses
 2. A 1-second `QTimer` polls `GET /api/downloads` to keep the model current
-3. `DownloadListModel` holds a `QVector<Download>` — each poll replaces it, preserving transient UI state (selection)
+3. `DownloadListModel` holds a `QVector<Download>` — each poll patches it by download ID, preserving selection (selection is tracked by download ID, not row index)
 4. UI actions call `DaemonClient` methods, which fire HTTP requests; on success, an immediate poll is triggered
 5. On disconnect, polling pauses, status bar shows "Disconnected", a 3-second retry timer attempts reconnection
 
@@ -47,7 +49,7 @@ Single `QLocalSocket` connection. HTTP/1.1 requests are serialized (one at a tim
 
 **Socket path:** `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback `/tmp/bolt-<uid>/bolt.sock`.
 
-**QLocalSocket note:** On Linux, `QLocalSocket::connectToServer(name)` treats the name as an abstract socket by default. To connect to a filesystem Unix socket, use `QLocalSocket::setServerName(fullPath)` with the full path then `connectToServer()`, or connect using the path directly. The implementation must use the filesystem path, not an abstract socket name.
+**QLocalSocket note:** The implementation must connect to the filesystem socket path, not an abstract socket name. Verify the exact `QLocalSocket` API during implementation to ensure it opens the file-based socket.
 
 **Assumption:** The daemon always sends `Content-Length` headers (no chunked transfer encoding). If a future daemon change introduces chunked responses, the parser will need updating.
 
@@ -154,7 +156,7 @@ struct Stats {
 | `refresh` | — | — | — | yes |
 | `verifying` | — | — | — | yes |
 
-`refresh` and `verifying` downloads have no actionable controls in V1 (URL refresh dialog is out of scope). They can only be deleted.
+`refresh` and `verifying` downloads have no actionable controls in V1 (URL refresh dialog is out of scope). They can only be deleted. Downloads in `refresh` status should display a tooltip or status bar hint: "This download needs a new URL. Refresh UI planned for a future version."
 
 ---
 
@@ -232,7 +234,7 @@ Daemon wraps responses — `DaemonClient` unwraps internally:
 
 ### Polling
 
-A `QTimer` fires every 1 second and calls `fetchDownloads()`. The response replaces the model contents. Polling is active only while connected.
+A `QTimer` fires every 1 second and calls `fetchDownloads()`. The response patches the model contents. Polling is active only while connected. If a poll request is already in flight, the timer tick is skipped to avoid overlapping requests and queue backlog.
 
 V1 uses a fixed 1-second interval for simplicity. Adaptive polling (slower when no active downloads) is a future optimization.
 
@@ -257,7 +259,7 @@ Since V1 polls instead of receiving WebSocket speed/ETA data, the model calculat
 - **Speed:** `(current.downloaded - previous.downloaded) / pollInterval` for each active download, comparing the current poll response against the previous one. Smoothed with a simple exponential moving average (alpha = 0.3) to avoid jitter.
 - **ETA:** `(totalSize - downloaded) / speed` when speed > 0, blank otherwise.
 
-The model keeps a `QHash<QString, qint64>` of previous `downloaded` values, updated each poll cycle.
+The model keeps a `QHash<QString, qint64>` of previous `downloaded` values, updated each poll cycle. On the first poll after startup or reconnect, there is no previous sample — speed and ETA display as blank until the second poll provides a delta.
 
 ### Update Strategy
 
@@ -276,7 +278,7 @@ On each `downloadsFetched` signal:
 
 Standard `QTableView` with multi-row selection. Selected rows drive toolbar button enabled state.
 
-When multi-selecting downloads with mixed statuses (e.g., 1 active + 1 paused + 1 completed), toolbar buttons apply only to applicable downloads. For example, clicking Pause sends `pauseDownload()` only for the active ones. The daemon returns errors for non-applicable downloads, which are silently ignored.
+When multi-selecting downloads with mixed statuses (e.g., 1 active + 1 paused + 1 completed), toolbar buttons send actions only to applicable downloads (filtered client-side by status). For example, clicking Pause sends `pauseDownload()` only for the active ones — it does not send to paused/completed ones at all. If all actions fail, show a single generic error. If some succeed and some fail, show a brief error count ("2 of 3 actions failed") rather than silently ignoring failures.
 
 ---
 
