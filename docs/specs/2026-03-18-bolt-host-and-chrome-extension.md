@@ -19,7 +19,7 @@ The extension is a thin handoff client. It captures download intent, collects br
 
 ### Binary and Module
 
-`cmd/bolt-host/main.go` — a separate Go binary in the same module (`github.com/fhsinchy/bolt`). Imports `internal/model` for shared type definitions only. Specifically: `AddRequest`, `ProbeResult`, `Checksum`, `Download`, and status constants. Does not import engine, queue, service, db, or any other daemon package. This is intentional — both binaries share a Go module, so `internal/` is accessible to both `cmd/bolt/` and `cmd/bolt-host/`.
+`cmd/bolt-host/main.go` — a separate Go binary in the same module (`github.com/fhsinchy/bolt`). bolt-host may import stable shared types/protocol packages only (currently `internal/model`). It must not import daemon internals like engine, queue, service, or db. Both binaries share a Go module, so `internal/` is accessible to both `cmd/bolt/` and `cmd/bolt-host/`.
 
 Built with: `CGO_ENABLED=0 go build -o bolt-host ./cmd/bolt-host/`
 
@@ -84,7 +84,7 @@ Chrome's native messaging protocol has a 1 MB per-message limit. All expected co
 
 ### Internal Structure
 
-- **stdin reader goroutine:** reads length-prefixed messages, decodes JSON, makes HTTP request to daemon via Unix socket, writes length-prefixed response to stdout
+- **Command handler goroutine:** reads length-prefixed messages from stdin, decodes JSON, makes HTTP request to daemon via Unix socket, writes length-prefixed response to stdout
 - **stdout writes** protected by a mutex (future-proofing for async additions)
 - **HTTP client** with 10-second timeout per request, Unix socket dialer
 - If the Unix socket doesn't exist or connect fails, commands return `{"success": false, "error": "daemon_unavailable"}`
@@ -179,6 +179,7 @@ Three explicit states:
 
 **State transitions:**
 - Port opened → send `ping` → `ready` or `daemon_unavailable`
+- Ping times out → `daemon_unavailable` (not `host_unavailable` — the host process is running, the daemon is not responding)
 - `onDisconnect` fires → `host_unavailable`
 - Port opened but `connectNative()` fails immediately → `host_unavailable`
 
@@ -203,9 +204,11 @@ Responsibilities:
 Responsibilities:
 - Listen for clicks on `<a>` tags with href matching download file extensions
 - `preventDefault()` and send message to background service worker
-- Only active when capture is enabled
+- The content script is statically declared in MV3 and injected into all pages, but only intercepts clicks when capture is enabled (checks storage before acting)
 
-**File extension matching:** The content script uses a hardcoded list of common downloadable file extensions (e.g., `.zip`, `.tar.gz`, `.iso`, `.deb`, `.rpm`, `.exe`, `.msi`, `.dmg`, `.pdf`, `.7z`, `.rar`, `.AppImage`). This list is separate from the popup's whitelist/blacklist filters — those filters are applied by the background service worker on the `downloads.onCreated` path. The content script list is deliberately broad and static; it exists only to identify links that are likely downloads rather than navigation. Web resource extensions (`.html`, `.js`, `.css`, `.json`, `.xml`) and image extensions are excluded.
+**File extension matching:** The content script uses a hardcoded list of common downloadable file extensions (e.g., `.zip`, `.tar.gz`, `.iso`, `.deb`, `.rpm`, `.exe`, `.msi`, `.dmg`, `.pdf`, `.7z`, `.rar`, `.AppImage`). This list is separate from the popup's whitelist/blacklist filters — those filters are applied by the background service worker on the `downloads.onCreated` path only. The content script list is deliberately broad and static; it exists only to identify links that are likely downloads rather than navigation. Web resource extensions (`.html`, `.js`, `.css`, `.json`, `.xml`) and image extensions are excluded.
+
+**Filter coverage by entry point:** Not all filters apply to all interception paths. Size-based filtering only works on the `downloads.onCreated` path where Chrome provides `totalBytes`. The content script and context menu paths do not know file size before handoff — the daemon probes the URL and determines size. Extension whitelist/blacklist and domain blocklist are applied by the background service worker and work on all paths.
 
 ### Download Interception Flows
 
@@ -216,7 +219,7 @@ Responsibilities:
 3. Ensure port is connected and healthy (lazy connect + ping if needed)
 4. Send `add_download` to bolt-host
 5. Success: brief notification ("Sent to Bolt: filename")
-6. Failure: open URL as normal browser download, notify ("Bolt unavailable, downloading normally")
+6. Failure: initiate browser download via `chrome.downloads.download({url})`, notify ("Bolt unavailable, downloading normally")
 
 #### Automatic Capture (when capture enabled)
 
@@ -247,7 +250,7 @@ Responsibilities:
 
 - **Context menu success:** brief notification ("Sent to Bolt: filename")
 - **Auto-capture success:** silent
-- **Any failure:** always notify so user knows fallback happened
+- **Any failure:** notify so user knows fallback happened. During auto-capture, if repeated failures occur (e.g., daemon goes down mid-session), suppress repeated notifications after the first — one "Bolt unavailable" notification is enough until state changes back to `ready`.
 - **Daemon policy responses** (duplicate, etc.): surfaced but not alarmist
 
 ### Popup UI
