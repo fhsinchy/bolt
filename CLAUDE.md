@@ -53,12 +53,16 @@ internal/
   model/                   Shared types, ID generation
   notify/                  Desktop notifications (notify-send)
   testutil/                Test helpers (httptest server)
+bolt-qt/                   C++ Qt6 GUI (Phase 2 — not yet buildable)
+  CMakeLists.txt           Qt6 project definition
+  src/                     Qt source files
 extensions/
-  chrome/                  Chrome browser extension
+  chrome/                  Chrome browser extension (Phase 2 — native messaging rewrite)
 images/                    Source icons
 packaging/
   bolt.service             Systemd user unit (Type=notify, hardened)
   bolt.desktop             Desktop entry
+docs/                      PRD, TRD, specs, plans
 ```
 
 ### Key Design: Callbacks Replace Event Bus
@@ -96,9 +100,12 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
+make build-qt    # build Qt GUI (not yet buildable)
+make build-all   # build all components
+make test-all    # test all components
 make install     # build + install binary + systemd unit + .desktop + icon
 make uninstall   # stop + disable + remove binary + unit + .desktop + icon
-make clean       # remove binary, clear test cache
+make clean       # remove binaries, build dirs, clear test cache
 ```
 
 ## Config
