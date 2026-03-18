@@ -11,6 +11,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 add_executable(bolt-qt
     src/main.cpp
+    src/daemonclient.h
+    src/daemonclient.cpp
 )
 
 target_link_libraries(bolt-qt PRIVATE
