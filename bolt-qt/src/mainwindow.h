@@ -8,7 +8,6 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QTableView>
-#include <QTimer>
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -39,6 +38,7 @@ private:
     void setupStatusBar();
     void updateToolbarState();
     void updateEmptyState();
+    void resizeEvent(QResizeEvent *event) override;
 
     DaemonClient *m_client;
     DownloadListModel *m_model;
@@ -56,11 +56,7 @@ private:
     // Status bar labels
     QLabel *m_connectionLabel;
     QLabel *m_activeCountLabel;
-    QLabel *m_totalSpeedLabel;
 
     // Empty state
     QLabel *m_emptyLabel;
-
-    // Status bar error clear timer
-    QTimer *m_errorClearTimer;
 };

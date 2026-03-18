@@ -46,9 +46,9 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     auto *optionsLayout = new QFormLayout(optionsGroup);
     auto *dirLayout = new QHBoxLayout();
     m_dirEdit = new QLineEdit();
-    m_browseButton = new QPushButton("Browse");
+    auto *browseButton = new QPushButton("Browse");
     dirLayout->addWidget(m_dirEdit, 1);
-    dirLayout->addWidget(m_browseButton);
+    dirLayout->addWidget(browseButton);
     m_segmentsSpin = new QSpinBox();
     m_segmentsSpin->setRange(1, 32);
     m_segmentsSpin->setValue(16);
@@ -78,7 +78,7 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     connect(m_urlEdit, &QLineEdit::returnPressed, this, &AddDownloadDialog::onProbe);
     connect(m_downloadButton, &QPushButton::clicked, this, &AddDownloadDialog::onDownload);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
-    connect(m_browseButton, &QPushButton::clicked, this, [this]() {
+    connect(browseButton, &QPushButton::clicked, this, [this]() {
         QString dir = QFileDialog::getExistingDirectory(this, "Select Directory", m_dirEdit->text());
         if (!dir.isEmpty())
             m_dirEdit->setText(dir);
@@ -90,6 +90,9 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     connect(m_client, &DaemonClient::requestFailed, this, &AddDownloadDialog::onRequestFailed);
     connect(m_client, &DaemonClient::configFetched, this, &AddDownloadDialog::onConfigFetched);
 
+    // Reset force flag when URL changes
+    connect(m_urlEdit, &QLineEdit::textChanged, this, [this]() { m_force = false; });
+
     // Check clipboard for URL
     QString clipText = QGuiApplication::clipboard()->text().trimmed();
     if (clipText.startsWith("http://") || clipText.startsWith("https://"))
@@ -97,14 +100,6 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
 
     // Fetch config for defaults
     m_client->fetchConfig();
-}
-
-AddDownloadDialog::~AddDownloadDialog() {
-    disconnect(m_client, &DaemonClient::probeCompleted, this, &AddDownloadDialog::onProbeCompleted);
-    disconnect(m_client, &DaemonClient::probeFailed, this, &AddDownloadDialog::onProbeFailed);
-    disconnect(m_client, &DaemonClient::downloadAdded, this, &AddDownloadDialog::onDownloadAdded);
-    disconnect(m_client, &DaemonClient::requestFailed, this, &AddDownloadDialog::onRequestFailed);
-    disconnect(m_client, &DaemonClient::configFetched, this, &AddDownloadDialog::onConfigFetched);
 }
 
 void AddDownloadDialog::onProbe() {

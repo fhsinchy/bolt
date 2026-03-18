@@ -16,7 +16,6 @@ class SettingsDialog : public QDialog {
 
 public:
     explicit SettingsDialog(DaemonClient *client, QWidget *parent = nullptr);
-    ~SettingsDialog() override;
 
 private slots:
     void onConfigFetched(Config cfg);

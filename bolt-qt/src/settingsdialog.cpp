@@ -1,5 +1,7 @@
 #include "settingsdialog.h"
 
+#include <cmath>
+
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -84,12 +86,6 @@ SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     m_client->fetchConfig();
 }
 
-SettingsDialog::~SettingsDialog() {
-    disconnect(m_client, &DaemonClient::configFetched, this, &SettingsDialog::onConfigFetched);
-    disconnect(m_client, &DaemonClient::configUpdated, this, &SettingsDialog::onConfigUpdated);
-    disconnect(m_client, &DaemonClient::requestFailed, this, &SettingsDialog::onRequestFailed);
-}
-
 void SettingsDialog::onConfigFetched(Config cfg) {
     m_originalConfig = cfg;
     m_dirEdit->setText(cfg.downloadDir);
@@ -122,7 +118,7 @@ void SettingsDialog::onSave() {
     if (defaultSegments != m_originalConfig.defaultSegments)
         changes["default_segments"] = defaultSegments;
 
-    qint64 speedLimit = static_cast<qint64>(m_speedLimitSpin->value() * 1024.0 * 1024.0);
+    qint64 speedLimit = std::llround(m_speedLimitSpin->value() * 1024.0 * 1024.0);
     if (speedLimit != m_originalConfig.globalSpeedLimit)
         changes["global_speed_limit"] = speedLimit;
 
@@ -130,7 +126,7 @@ void SettingsDialog::onSave() {
     if (maxRetries != m_originalConfig.maxRetries)
         changes["max_retries"] = maxRetries;
 
-    qint64 minSegSize = static_cast<qint64>(m_minSegmentSizeSpin->value() * 1024.0 * 1024.0);
+    qint64 minSegSize = std::llround(m_minSegmentSizeSpin->value() * 1024.0 * 1024.0);
     if (minSegSize != m_originalConfig.minSegmentSize)
         changes["min_segment_size"] = minSegSize;
 

@@ -37,6 +37,8 @@ public slots:
     void updateFromPoll(const QVector<Download> &incoming);
 
 private:
+    void updateSpeed(const Download &dl);
+
     QVector<Download> m_downloads;
     QHash<QString, qint64> m_prevDownloaded;
     QHash<QString, double> m_speeds;

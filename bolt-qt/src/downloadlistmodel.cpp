@@ -78,6 +78,7 @@ QVariant DownloadListModel::headerData(int section, Qt::Orientation orientation,
 }
 
 const Download &DownloadListModel::downloadAt(int row) const {
+    Q_ASSERT(row >= 0 && row < m_downloads.size());
     return m_downloads[row];
 }
 
@@ -97,6 +98,20 @@ QStringList DownloadListModel::selectedIds(const QModelIndexList &indexes) const
         if (row >= 0 && row < m_downloads.size())
             ids.append(m_downloads[row].id);
     return ids;
+}
+
+void DownloadListModel::updateSpeed(const Download &dl) {
+    if (dl.status == "active" && m_prevDownloaded.contains(dl.id)) {
+        qint64 delta = dl.downloaded - m_prevDownloaded[dl.id];
+        double instantSpeed = static_cast<double>(delta);
+        double prev = m_speeds.value(dl.id, 0.0);
+        m_speeds[dl.id] = (prev > 0.0)
+            ? 0.3 * instantSpeed + 0.7 * prev
+            : instantSpeed;
+    } else if (dl.status != "active") {
+        m_speeds.remove(dl.id);
+    }
+    m_prevDownloaded[dl.id] = dl.downloaded;
 }
 
 void DownloadListModel::updateFromPoll(const QVector<Download> &incoming) {
@@ -146,19 +161,24 @@ void DownloadListModel::updateFromPoll(const QVector<Download> &incoming) {
         // Full replace — simpler than merging insertions
         beginResetModel();
 
-        // Update speeds for existing downloads before replacing
-        for (const Download &dl : incoming) {
-            if (dl.status == "active" && m_prevDownloaded.contains(dl.id)) {
-                qint64 delta = dl.downloaded - m_prevDownloaded[dl.id];
-                double instantSpeed = static_cast<double>(delta);
-                double prev = m_speeds.value(dl.id, 0.0);
-                m_speeds[dl.id] = (prev > 0.0)
-                    ? 0.3 * instantSpeed + 0.7 * prev
-                    : instantSpeed;
-            } else if (dl.status != "active") {
-                m_speeds.remove(dl.id);
-            }
-            m_prevDownloaded[dl.id] = dl.downloaded;
+        for (const Download &dl : incoming)
+            updateSpeed(dl);
+
+        // Clean stale entries from hashes
+        QSet<QString> incomingIds;
+        for (const Download &dl : incoming)
+            incomingIds.insert(dl.id);
+        for (auto it = m_prevDownloaded.begin(); it != m_prevDownloaded.end(); ) {
+            if (!incomingIds.contains(it.key()))
+                it = m_prevDownloaded.erase(it);
+            else
+                ++it;
+        }
+        for (auto it = m_speeds.begin(); it != m_speeds.end(); ) {
+            if (!incomingIds.contains(it.key()))
+                it = m_speeds.erase(it);
+            else
+                ++it;
         }
 
         m_downloads = incoming;
@@ -166,24 +186,17 @@ void DownloadListModel::updateFromPoll(const QVector<Download> &incoming) {
         return;
     }
 
-    // Update existing rows in-place
+    // Update existing rows in-place, only emit dataChanged for rows that differ
     for (int i = 0; i < m_downloads.size(); i++) {
         const Download &dl = incoming[incomingById[m_downloads[i].id]];
+        updateSpeed(dl);
 
-        // Calculate speed (EMA alpha=0.3)
-        if (dl.status == "active" && m_prevDownloaded.contains(dl.id)) {
-            qint64 delta = dl.downloaded - m_prevDownloaded[dl.id];
-            double instantSpeed = static_cast<double>(delta);
-            double prev = m_speeds.value(dl.id, 0.0);
-            m_speeds[dl.id] = (prev > 0.0)
-                ? 0.3 * instantSpeed + 0.7 * prev
-                : instantSpeed;
-        } else if (dl.status != "active") {
-            m_speeds.remove(dl.id);
-        }
-        m_prevDownloaded[dl.id] = dl.downloaded;
-
+        bool changed = m_downloads[i].downloaded != dl.downloaded
+                    || m_downloads[i].status != dl.status
+                    || m_downloads[i].filename != dl.filename
+                    || m_downloads[i].totalSize != dl.totalSize;
         m_downloads[i] = dl;
-        emit dataChanged(index(i, 0), index(i, ColCount - 1));
+        if (changed)
+            emit dataChanged(index(i, 0), index(i, ColCount - 1));
     }
 }

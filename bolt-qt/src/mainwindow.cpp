@@ -8,6 +8,7 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QResizeEvent>
 #include <QIcon>
 #include <QLabel>
 #include <QSettings>
@@ -21,7 +22,6 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
     , m_model(new DownloadListModel(this))
     , m_tableView(new QTableView(this))
     , m_progressDelegate(new ProgressDelegate(this))
-    , m_errorClearTimer(new QTimer(this))
 {
     setWindowTitle("Bolt Download Manager");
     resize(800, 500);
@@ -49,13 +49,6 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
 
     setupToolbar();
     setupStatusBar();
-
-    // Error clear timer
-    m_errorClearTimer->setSingleShot(true);
-    m_errorClearTimer->setInterval(5000);
-    connect(m_errorClearTimer, &QTimer::timeout, this, [this]() {
-        statusBar()->clearMessage();
-    });
 
     // Connect client signals
     connect(m_client, &DaemonClient::connected, this, &MainWindow::onConnected);
@@ -103,11 +96,9 @@ void MainWindow::setupToolbar() {
 void MainWindow::setupStatusBar() {
     m_connectionLabel = new QLabel("Connecting...");
     m_activeCountLabel = new QLabel();
-    m_totalSpeedLabel = new QLabel();
 
     statusBar()->addPermanentWidget(m_connectionLabel);
     statusBar()->addPermanentWidget(m_activeCountLabel);
-    statusBar()->addPermanentWidget(m_totalSpeedLabel);
 }
 
 void MainWindow::onConnected() {
@@ -131,15 +122,12 @@ void MainWindow::onDownloadsFetched(const QVector<Download> &downloads) {
         ? QString::number(activeCount) + " downloading"
         : QString());
 
-    m_totalSpeedLabel->setText(QString());
-
     updateEmptyState();
     updateToolbarState();
 }
 
 void MainWindow::onRequestFailed(const QString &, int, const QString &, const QString &errorMessage) {
     statusBar()->showMessage("Error: " + errorMessage, 5000);
-    m_errorClearTimer->start();
 }
 
 void MainWindow::onSelectionChanged() {
@@ -172,6 +160,11 @@ void MainWindow::updateEmptyState() {
     if (empty) {
         m_emptyLabel->setGeometry(m_tableView->viewport()->rect());
     }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
+    updateEmptyState();
 }
 
 void MainWindow::onAddUrl() {
