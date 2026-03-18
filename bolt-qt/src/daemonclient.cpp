@@ -3,7 +3,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QStandardPaths>
 #include <unistd.h>
 
 DaemonClient::DaemonClient(QObject *parent)
@@ -29,10 +28,12 @@ DaemonClient::DaemonClient(QObject *parent)
 }
 
 QString DaemonClient::socketPath() {
-    QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    if (!runtimeDir.isEmpty())
-        return runtimeDir + "/bolt/bolt.sock";
-    return QString("/tmp/bolt-%1/bolt.sock").arg(getuid());
+    // Match the daemon's Go logic exactly: os.Getenv("XDG_RUNTIME_DIR")
+    // with fallback to /tmp/bolt-<uid>
+    QString runtimeDir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (runtimeDir.isEmpty())
+        runtimeDir = QString("/tmp/bolt-%1").arg(getuid());
+    return runtimeDir + "/bolt/bolt.sock";
 }
 
 void DaemonClient::tryConnect() {
@@ -97,10 +98,11 @@ void DaemonClient::failAbandonedRequests() {
 void DaemonClient::resetParserState() {
     m_headerBuffer.clear();
     m_bodyBuffer.clear();
+    m_chunkedBody.clear();
     m_contentLength = -1;
     m_responseStatusCode = 0;
     m_headersComplete = false;
-    m_contentLengthFound = false;
+    m_chunked = false;
 }
 
 void DaemonClient::sendRequest(const QByteArray &method, const QByteArray &path,
@@ -145,17 +147,16 @@ void DaemonClient::processQueue() {
 }
 
 void DaemonClient::onReadyRead() {
-    while (m_socket->bytesAvailable() > 0) {
+    while (m_socket->bytesAvailable() > 0 || (m_headersComplete && !m_bodyBuffer.isEmpty())) {
         if (!m_headersComplete) {
             m_headerBuffer.append(m_socket->readAll());
             int headerEnd = m_headerBuffer.indexOf("\r\n\r\n");
             if (headerEnd < 0)
                 return;
 
-            // Parse status line
+            // Parse status line: "HTTP/1.1 200 OK"
             int firstLineEnd = m_headerBuffer.indexOf("\r\n");
             QByteArray statusLine = m_headerBuffer.left(firstLineEnd);
-            // "HTTP/1.1 200 OK"
             int spaceIdx = statusLine.indexOf(' ');
             if (spaceIdx >= 0) {
                 int secondSpace = statusLine.indexOf(' ', spaceIdx + 1);
@@ -165,58 +166,96 @@ void DaemonClient::onReadyRead() {
                 m_responseStatusCode = codeStr.toInt();
             }
 
-            // Parse headers for Content-Length and Transfer-Encoding
+            // Parse headers
             QByteArray headers = m_headerBuffer.left(headerEnd);
-            m_contentLength = 0;
-            m_contentLengthFound = false;
-            bool chunked = false;
+            m_contentLength = -1;
+            m_chunked = false;
             for (const QByteArray &line : headers.split('\n')) {
-                QByteArray trimmed = line.trimmed();
-                QByteArray lower = trimmed.toLower();
-                if (lower.startsWith("content-length:")) {
-                    m_contentLength = trimmed.mid(15).trimmed().toInt();
-                    m_contentLengthFound = true;
-                } else if (lower.startsWith("transfer-encoding:")
-                           && lower.contains("chunked")) {
-                    chunked = true;
-                }
+                QByteArray lower = line.trimmed().toLower();
+                if (lower.startsWith("content-length:"))
+                    m_contentLength = lower.mid(15).trimmed().toInt();
+                else if (lower.startsWith("transfer-encoding:") && lower.contains("chunked"))
+                    m_chunked = true;
             }
 
-            // If chunked or no Content-Length on a non-empty response,
-            // disconnect to resync — we can't parse this safely.
-            if (chunked || (!m_contentLengthFound && m_responseStatusCode != 204)) {
-                m_requestInFlight = false;
-                resetParserState();
-                m_socket->disconnectFromServer();
-                return;
-            }
+            // Default content-length for non-chunked, non-204 responses
+            if (!m_chunked && m_contentLength < 0)
+                m_contentLength = (m_responseStatusCode == 204) ? 0 : 0;
 
             // Move remaining data to body buffer
             m_bodyBuffer = m_headerBuffer.mid(headerEnd + 4);
             m_headerBuffer.clear();
             m_headersComplete = true;
-        } else {
+        } else if (m_socket->bytesAvailable() > 0) {
             m_bodyBuffer.append(m_socket->readAll());
         }
 
-        if (m_headersComplete && m_bodyBuffer.size() >= m_contentLength) {
-            QByteArray body = m_bodyBuffer.left(m_contentLength);
+        if (!m_headersComplete)
+            return;
+
+        if (m_chunked) {
+            // Parse chunked transfer encoding
+            // Format: <hex-size>\r\n<data>\r\n ... 0\r\n\r\n
+            while (true) {
+                int lineEnd = m_bodyBuffer.indexOf("\r\n");
+                if (lineEnd < 0)
+                    return; // need more data for chunk size line
+
+                bool ok;
+                int chunkSize = m_bodyBuffer.left(lineEnd).trimmed().toInt(&ok, 16);
+                if (!ok) {
+                    // Malformed chunk — disconnect to resync
+                    m_requestInFlight = false;
+                    resetParserState();
+                    m_socket->disconnectFromServer();
+                    return;
+                }
+
+                if (chunkSize == 0) {
+                    // Terminal chunk — need trailing \r\n
+                    if (m_bodyBuffer.size() < lineEnd + 4)
+                        return; // need more data
+                    QByteArray remaining = m_bodyBuffer.mid(lineEnd + 4);
+                    completeResponse();
+                    if (!remaining.isEmpty())
+                        m_headerBuffer = remaining;
+                    processQueue();
+                    break;
+                }
+
+                // Need: size line + \r\n + chunkSize bytes + \r\n
+                int dataStart = lineEnd + 2;
+                int dataEnd = dataStart + chunkSize + 2;
+                if (m_bodyBuffer.size() < dataEnd)
+                    return; // need more data
+
+                m_chunkedBody.append(m_bodyBuffer.mid(dataStart, chunkSize));
+                m_bodyBuffer = m_bodyBuffer.mid(dataEnd);
+            }
+        } else {
+            // Content-Length mode
+            if (m_bodyBuffer.size() < m_contentLength)
+                return; // need more data
+
             QByteArray remaining = m_bodyBuffer.mid(m_contentLength);
-
-            QString tag = m_currentRequest.tag;
-            int statusCode = m_responseStatusCode;
-
-            m_requestInFlight = false;
-            resetParserState();
-
-            // If there's leftover data, keep it for next response
+            m_chunkedBody = m_bodyBuffer.left(m_contentLength);
+            completeResponse();
             if (!remaining.isEmpty())
                 m_headerBuffer = remaining;
-
-            handleResponse(statusCode, body, tag);
             processQueue();
         }
     }
+}
+
+void DaemonClient::completeResponse() {
+    QByteArray body = m_chunkedBody;
+    QString tag = m_currentRequest.tag;
+    int statusCode = m_responseStatusCode;
+
+    m_requestInFlight = false;
+    resetParserState();
+
+    handleResponse(statusCode, body, tag);
 }
 
 void DaemonClient::handleResponse(int statusCode, const QByteArray &body, const QString &tag) {

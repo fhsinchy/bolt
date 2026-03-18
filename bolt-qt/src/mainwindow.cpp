@@ -252,8 +252,11 @@ void MainWindow::onDelete() {
         return;
     }
 
-    QModelIndexList selected = m_tableView->selectionModel()->selectedRows();
-    if (selected.isEmpty())
+    // Capture IDs before the modal dialog — the model can poll and
+    // reorder while the dialog is open, invalidating row indexes.
+    QStringList ids = m_model->selectedIds(
+        m_tableView->selectionModel()->selectedRows());
+    if (ids.isEmpty())
         return;
 
     // Custom delete confirmation dialog
@@ -261,7 +264,7 @@ void MainWindow::onDelete() {
     dialog.setWindowTitle("Confirm Delete");
 
     auto *layout = new QVBoxLayout(&dialog);
-    int count = selected.size();
+    int count = ids.size();
     layout->addWidget(new QLabel(
         count == 1
             ? "Delete this download?"
@@ -280,10 +283,8 @@ void MainWindow::onDelete() {
         return;
 
     bool deleteFile = deleteFileCheck->isChecked();
-    for (const QModelIndex &idx : selected) {
-        QString id = m_model->downloadIdAt(idx.row());
+    for (const QString &id : ids)
         m_client->deleteDownload(id, deleteFile);
-    }
 }
 
 void MainWindow::onSettings() {

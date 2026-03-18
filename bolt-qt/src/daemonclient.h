@@ -76,11 +76,14 @@ private:
     QQueue<PendingRequest> m_queue;
     PendingRequest m_currentRequest;
 
+    void completeResponse();
+
     // HTTP response parser state
     QByteArray m_headerBuffer;
     QByteArray m_bodyBuffer;
+    QByteArray m_chunkedBody;   // assembled decoded body for chunked responses
     int m_contentLength = -1;
     int m_responseStatusCode = 0;
     bool m_headersComplete = false;
-    bool m_contentLengthFound = false;
+    bool m_chunked = false;
 };

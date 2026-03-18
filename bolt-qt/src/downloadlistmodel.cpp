@@ -196,12 +196,15 @@ void DownloadListModel::updateFromPoll(const QVector<Download> &incoming) {
     // Update existing rows in-place, only emit dataChanged for rows that differ
     for (int i = 0; i < m_downloads.size(); i++) {
         const Download &dl = incoming[incomingById[m_downloads[i].id]];
+        double oldSpeed = m_speeds.value(dl.id, 0.0);
         updateSpeed(dl);
+        double newSpeed = m_speeds.value(dl.id, 0.0);
 
         bool changed = m_downloads[i].downloaded != dl.downloaded
                     || m_downloads[i].status != dl.status
                     || m_downloads[i].filename != dl.filename
-                    || m_downloads[i].totalSize != dl.totalSize;
+                    || m_downloads[i].totalSize != dl.totalSize
+                    || oldSpeed != newSpeed;
         m_downloads[i] = dl;
         if (changed)
             emit dataChanged(index(i, 0), index(i, ColCount - 1));
