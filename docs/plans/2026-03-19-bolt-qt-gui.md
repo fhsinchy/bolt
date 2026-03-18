@@ -59,6 +59,10 @@ Replace the existing scaffold. Remove `WebSockets` from `find_package`. Uncommen
 
 Create `bolt-qt/src/types.h` — header-only file with all data structs (`Download`, `AddRequest`, `ProbeResult`, `Config`, `Stats`) plus `fromJson`/`toJson` methods and formatting helpers (`formatBytes`, `formatSpeed`, `formatEta`, `statusDisplayText`). All `fromJson` methods read snake_case JSON keys and map to camelCase C++ fields. See spec section "Types (types.h)" for exact struct definitions and JSON field mappings.
 
+Note: `AddRequest::toJson()` must omit empty/zero fields — only include non-default values in the JSON. The daemon fills in defaults for omitted fields.
+
+Note: `Download::data()` for `Qt::ToolTipRole` should return "This download needs a new URL. Refresh UI planned for a future version." when `status == "refresh"`.
+
 - [ ] **Step 3: Create minimal main.cpp**
 
 Create `bolt-qt/src/main.cpp` — `QApplication` setup with app name/org. No widgets yet — just verify the build system works.
@@ -100,49 +104,59 @@ Declare `DaemonClient` class with:
 - All signals from spec (connected, disconnected, downloadsFetched, downloadAdded, probeCompleted, probeFailed, configFetched, configUpdated, statsFetched, requestFailed)
 - Private slots: onSocketConnected, onSocketDisconnected, onSocketError, onReadyRead, tryConnect, poll
 
-- [ ] **Step 2: Create daemonclient.cpp**
+- [ ] **Step 2: Implement socket path resolution and connection lifecycle**
 
-Implement the full DaemonClient:
-
-**Socket path resolution:** Check `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback to `/tmp/bolt-<uid>/bolt.sock`. Use the filesystem socket path with `QLocalSocket`.
-
-**Connection lifecycle:**
+In `daemonclient.cpp`, implement:
+- `socketPath()`: check `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback to `/tmp/bolt-<uid>/bolt.sock`
 - Constructor: create socket, timers, connect socket signals, call `tryConnect()`
-- `tryConnect()`: connect to socket path via `connectToServer()`
+- `tryConnect()`: connect to socket path. **Important:** use `QLocalSocket::setServerName(fullPath)` with the full filesystem path, then `connectToServer()` — or use `connectToServer(path, QLocalSocket::FullServerName)` (Qt 6.2+). Do NOT pass just a name, which would create an abstract socket.
 - `onSocketConnected()`: emit `connected()`, start 1s poll timer, do initial `fetchDownloads()`
 - `onSocketDisconnected()`: emit `disconnected()`, stop poll timer, clear parser state, start 3s reconnect timer
 - `onSocketError()`: if not connected, start reconnect timer
 
-**HTTP request/response:**
+- [ ] **Step 3: Implement HTTP request serialization and response parsing**
+
+In `daemonclient.cpp`, implement:
 - `sendRequest(method, path, body, tag)`: enqueue `PendingRequest`, call `processQueue()`
-- `processQueue()`: if `m_requestInFlight` or queue empty, return. Dequeue, build HTTP/1.1 request bytes (`method path HTTP/1.1\r\nHost: localhost\r\nContent-Length: N\r\n\r\nbody`), write to socket, set `m_requestInFlight = true`
+- `processQueue()`: if `m_requestInFlight` or queue empty, return. Dequeue, build HTTP/1.1 request bytes:
+  ```
+  METHOD path HTTP/1.1\r\n
+  Host: localhost\r\n
+  Content-Type: application/json\r\n    (for POST/PUT with body)
+  Content-Length: N\r\n
+  \r\n
+  body
+  ```
+  Write to socket, set `m_requestInFlight = true`
 - `onReadyRead()`: state machine — accumulate data into `m_headerBuffer` until `\r\n\r\n` found, extract status code and Content-Length, switch to body reading, accumulate into `m_bodyBuffer` until `m_contentLength` bytes read, call `handleResponse()`, reset state, call `processQueue()`
 
-**Response routing (`handleResponse`):**
-- Parse JSON from body
-- Check for error responses (status >= 400): extract `error` and `code` fields, emit `requestFailed()`
-- Route by tag string to correct signal with envelope unwrapping per spec table
-- Action tags (pause/resume/retry/delete): on success, trigger immediate `fetchDownloads()`
+- [ ] **Step 4: Implement response routing and polling**
 
-**Polling:**
+In `daemonclient.cpp`, implement:
+- `handleResponse(statusCode, body, tag)`:
+  - Parse JSON from body
+  - Check for error responses (status >= 400): extract `error` and `code` fields, emit `requestFailed()`
+  - Route by tag string to correct signal with envelope unwrapping per spec table
+  - Action tags (pause/resume/retry/delete): on success, trigger immediate `fetchDownloads()`
 - `poll()`: if `m_pollInFlight`, return (skip). Otherwise set `m_pollInFlight = true`, call `fetchDownloads()` with tag `"poll"`. Clear flag in the response handler.
+- All public API methods: call `sendRequest()` with appropriate method, path, body, and tag
 
-- [ ] **Step 3: Add to CMakeLists.txt**
+- [ ] **Step 5: Add to CMakeLists.txt**
 
 Add `src/daemonclient.h` and `src/daemonclient.cpp` to `add_executable`.
 
-- [ ] **Step 4: Verify it builds**
+- [ ] **Step 6: Verify it builds**
 
 Run: `make build-qt`
 Expected: Compiles without errors
 
-- [ ] **Step 5: Smoke-test against running daemon**
+- [ ] **Step 7: Smoke-test against running daemon**
 
 Temporarily add debug output to `main.cpp` — connect to `connected`/`downloadsFetched`/`disconnected` signals and print to qDebug. Run the binary with daemon running. Verify it connects, polls, and prints download counts.
 
-- [ ] **Step 6: Revert smoke-test debug code from main.cpp**
+- [ ] **Step 8: Revert smoke-test debug code from main.cpp**
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add bolt-qt/
@@ -216,29 +230,45 @@ Declare `MainWindow : QMainWindow` with:
 - Empty state label
 - Slots for connected/disconnected/downloadsFetched/requestFailed/selectionChanged/toolbar actions
 
-- [ ] **Step 2: Create mainwindow.cpp**
+- [ ] **Step 2: Implement constructor, toolbar, and status bar**
 
-Implement:
-- Constructor: create all widgets, set up toolbar with `QIcon::fromTheme()` icons, status bar, connect signals
-- Table view: set model, set delegate on progress column, configure selection behavior, column widths
-- `onConnected()`/`onDisconnected()`: update connection label text
-- `onDownloadsFetched()`: pass to model, update active count and total speed in status bar, toggle empty label visibility
-- `updateToolbarState()`: iterate selected rows, check download statuses, enable/disable buttons per spec table
-- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status, send only valid actions
-- `onDelete()`: `QMessageBox::question` with "Also delete downloaded file" checkbox, call `deleteDownload()` for each selected
-- Save/restore geometry via `QSettings`
-- Empty state: `QLabel` centered in a `QStackedWidget` or overlaid on the table view
+In `mainwindow.cpp`:
+- Constructor: set window title "Bolt Download Manager", create model, table view, progress delegate
+- `setupToolbar()`: create 6 actions with `QIcon::fromTheme()` icons per spec table. Connect action `triggered` signals to slots.
+- `setupStatusBar()`: create 3 labels — connection state ("Connecting..."), active count, total speed. Initial state is "Connecting..." (shown before first connect/disconnect signal).
+- Table view: set model, set delegate on progress column, configure multi-row selection, set reasonable column widths
+- Save/restore geometry via `QSettings` in constructor and `closeEvent`
 
-- [ ] **Step 3: Update main.cpp**
+- [ ] **Step 3: Implement connection/poll handlers and empty state**
+
+In `mainwindow.cpp`:
+- `onConnected()`: update connection label to "Connected"
+- `onDisconnected()`: update connection label to "Disconnected — retrying..."
+- `onDownloadsFetched()`: call `m_model->updateFromPoll()`, update active count label (count status == "active"), update total speed label (sum of model speeds), toggle empty state label visibility (show "No downloads yet. Click + to add one." when model is empty)
+- Empty state: `QLabel` overlaid on the table view, centered, visible only when model has 0 rows
+
+- [ ] **Step 4: Implement toolbar state and action handlers**
+
+In `mainwindow.cpp`:
+- `onSelectionChanged()` → `updateToolbarState()`: iterate selected rows, check download statuses per spec toolbar behavior table, enable/disable Pause/Resume/Retry/Delete
+- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status (client-side), send actions only for valid ones. Track success/failure count across responses. If some fail, show "N of M actions failed" in status bar. Guard: if `!m_client->isConnected()`, show brief error and return.
+- `onDelete()`: show custom `QDialog` (not `QMessageBox::question`, which doesn't support checkboxes) with message, "Also delete downloaded file" checkbox (unchecked by default), and OK/Cancel. On OK, call `deleteDownload()` for each selected. Same disconnected guard.
+- `onRequestFailed()`: show brief error message in status bar (auto-clear after 5s)
+
+- [ ] **Step 5: Implement onAddUrl and onSettings stubs**
+
+Stub `onAddUrl()` and `onSettings()` — they will be wired to dialogs in Tasks 5 and 6.
+
+- [ ] **Step 6: Update main.cpp**
 
 Replace minimal main with full setup: create `DaemonClient`, create `MainWindow(&client)`, show window, run event loop.
 
-- [ ] **Step 4: Add to CMakeLists.txt and verify build**
+- [ ] **Step 7: Add to CMakeLists.txt and verify build**
 
 Run: `make build-qt`
 Expected: Compiles. Window shows with toolbar and empty table.
 
-- [ ] **Step 5: Manual test against daemon**
+- [ ] **Step 8: Manual test against daemon**
 
 Run bolt-qt with daemon running. Verify:
 - Status bar shows "Connected"
@@ -247,8 +277,9 @@ Run bolt-qt with daemon running. Verify:
 - Speed and ETA columns show values for active downloads
 - Toolbar buttons enable/disable based on selection
 - Pause/Resume/Delete work
+- Status bar shows "Disconnected — retrying..." when daemon stops, "Connected" when it restarts
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add bolt-qt/
@@ -273,8 +304,8 @@ Declare `AddDownloadDialog : QDialog` with:
 - [ ] **Step 2: Create adddownloaddialog.cpp**
 
 Implement per spec:
-- Constructor: build layout (URL + Probe, probe results group, options group, buttons). Check clipboard for URL. Call `fetchConfig()` for defaults. Connect signals.
-- `onProbe()`: call `probeUrl(url)`, disable probe button
+- Constructor: build layout (URL + Probe, probe results group, options group, buttons). Check clipboard for URL. Call `fetchConfig()` for defaults. Connect signals. Connect URL edit's `returnPressed` to `onProbe()` for auto-probe on Enter. Optionally add a `QTimer::singleShot` debounce on paste (300ms).
+- `onProbe()`: guard if disconnected. Call `probeUrl(url)`, disable probe button
 - `onProbeCompleted()`: populate filename, size (`formatBytes`), resumable text, re-enable probe
 - `onProbeFailed()`: show error in `m_errorLabel`, re-enable probe
 - `onDownload()`: build `AddRequest` from form fields, call `addDownload()`
@@ -319,7 +350,7 @@ Declare `SettingsDialog : QDialog` with:
 - [ ] **Step 2: Create settingsdialog.cpp**
 
 Implement per spec:
-- Constructor: build layout with `QFormLayout`. Call `fetchConfig()`. Connect signals.
+- Constructor: build layout with `QFormLayout`. Call `fetchConfig()`. Connect signals. Disconnect DaemonClient signals in destructor (same pattern as AddDownloadDialog).
 - `onConfigFetched()`: store as `m_originalConfig`, populate fields. Speed limit and min segment size: convert from bytes to MB for display.
 - `onSave()`: build `QJsonObject` with only changed fields (compare against `m_originalConfig`). Convert MB inputs back to bytes. Call `updateConfig()`.
 - `onConfigUpdated()`: `accept()` to close dialog
