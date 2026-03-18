@@ -956,7 +956,7 @@ Installed at `~/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.jso
 }
 ```
 
-`make install` generates this manifest with the correct absolute path and extension ID. The manifest directory varies by browser and distro (e.g., `~/.config/chromium/NativeMessagingHosts/` for Chromium, `/etc/opt/chrome/native-messaging-hosts/` for system-wide Chrome on some distros). The installer detects the appropriate path.
+`make install` generates this manifest with the correct absolute path and extension ID. It installs to user-level directories for Chrome (`~/.config/google-chrome/NativeMessagingHosts/`), Chromium (`~/.config/chromium/NativeMessagingHosts/`), and Brave (`~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/`). System-wide or other Chromium-based browsers require manual manifest installation.
 
 ### 17.4 Extension Changes from `master`
 
@@ -965,7 +965,7 @@ Installed at `~/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.jso
 | Transport | Replace `fetch()` HTTP calls with `chrome.runtime.connectNative()` |
 | Auth | Remove Bearer token — native messaging is restricted by Chrome to the declared extension ID |
 | Port config | Remove — no loopback port needed |
-| WebSocket | Remove — the extension keeps a persistent native messaging port; `bolt-host` can stream daemon events back over stdout as they arrive |
+| WebSocket | Remove — V1 is request/response only; the extension keeps a persistent native messaging port for commands |
 
 ### 17.5 Design Constraints
 

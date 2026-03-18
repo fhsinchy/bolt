@@ -105,7 +105,13 @@ function sendCommand(cmd) {
       clearTimeout(timer);
       resolve(msg);
     });
-    port.postMessage(cmd);
+    try {
+      port.postMessage(cmd);
+    } catch {
+      clearTimeout(timer);
+      pendingCallbacks.delete(id);
+      resolve(null);
+    }
   });
 }
 
@@ -192,16 +198,6 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
   // Apply filters
   if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) return;
 
-  // Best-effort cancel + erase to avoid stale entries in Chrome download UI.
-  // If cancel fails (download already completed, etc.), we continue with the
-  // handoff anyway — the daemon will handle duplicates.
-  try {
-    await chrome.downloads.cancel(downloadItem.id);
-    chrome.downloads.erase({ id: downloadItem.id });
-  } catch {
-    /* cancel/erase is best-effort */
-  }
-
   const headers = await collectHeaders(url, downloadItem.referrer);
 
   const resp = await sendWithConnection({
@@ -214,16 +210,23 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     },
   });
 
-  if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
-    // Bolt is genuinely unreachable — fall back to browser download
-    reinitiatedUrls.add(url);
-    chrome.downloads.download({ url });
+  if (resp && resp.success) {
+    // Bolt accepted — cancel the browser's download to avoid duplicates.
+    // Best-effort: if cancel fails (already completed, etc.), no harm done.
+    try {
+      await chrome.downloads.cancel(downloadItem.id);
+      chrome.downloads.erase({ id: downloadItem.id });
+    } catch {
+      /* cancel/erase is best-effort */
+    }
+  } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
+    // Bolt is genuinely unreachable — let the browser download continue as-is
     if (!failureNotified) {
       showNotification("Bolt unavailable", "Downloading normally");
       failureNotified = true;
     }
-  } else if (resp && !resp.success) {
-    // Daemon rejected the request — surface the error, don't bypass
+  } else {
+    // Daemon rejected the request — surface the error, let browser download continue
     showNotification("Download rejected", resp.error || "Unknown error");
   }
 });
