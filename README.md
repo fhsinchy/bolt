@@ -35,7 +35,7 @@ One-liner:
 curl -fsSL https://raw.githubusercontent.com/fhsinchy/bolt/master/install.sh | sh
 ```
 
-This downloads the latest release, installs the binary to `~/.local/bin`, sets up a systemd user service, desktop entry, and icon. Bolt starts automatically on login.
+This downloads the latest release, installs the daemon binary to `~/.local/bin`, and sets up a systemd user service. Bolt starts automatically on login. A desktop entry and icon are also installed for future GUI integration.
 
 To uninstall:
 
@@ -50,14 +50,14 @@ Make sure `~/.local/bin` is in your `PATH`.
 Download the latest tarball from [GitHub Releases](https://github.com/fhsinchy/bolt/releases/latest):
 
 ```bash
-tar xzf bolt-linux-amd64.tar.gz
-cd bolt-linux-amd64
+tar xzf bolt-*.tar.gz
+cd bolt-*/
 
 mkdir -p ~/.local/bin ~/.config/systemd/user ~/.local/share/applications ~/.local/share/icons/hicolor/256x256/apps
 cp bolt ~/.local/bin/
 cp bolt.service ~/.config/systemd/user/
 sed "s|Exec=bolt|Exec=$HOME/.local/bin/bolt|" bolt.desktop > ~/.local/share/applications/bolt.desktop
-cp appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+cp icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null || true
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 systemctl --user daemon-reload

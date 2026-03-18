@@ -53,7 +53,7 @@ internal/
   model/                   Shared types, ID generation
   notify/                  Desktop notifications (notify-send)
   testutil/                Test helpers (httptest server)
-bolt-qt/                   C++ Qt6 GUI (Phase 2 — not yet buildable)
+bolt-qt/                   C++ Qt6 GUI (planned — not yet buildable)
   CMakeLists.txt           Qt6 project definition
   src/                     Qt source files
 extensions/
