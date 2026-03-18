@@ -134,6 +134,28 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// --- Cached settings ---
+
+let cachedSettings = {
+  captureEnabled: false,
+  minFileSize: 0,
+  extensionWhitelist: [],
+  extensionBlacklist: [],
+  domainBlocklist: [],
+};
+
+chrome.storage.local.get(cachedSettings, (s) => {
+  cachedSettings = s;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  for (const key of Object.keys(cachedSettings)) {
+    if (changes[key]) {
+      cachedSettings[key] = changes[key].newValue;
+    }
+  }
+});
+
 // --- Automatic capture ---
 
 chrome.downloads.onCreated.addListener(async (downloadItem) => {
@@ -148,25 +170,10 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     return;
   }
 
-  // Check if capture is enabled
-  const settings = await chrome.storage.local.get({
-    captureEnabled: false,
-    minFileSize: 0,
-    extensionWhitelist: [],
-    extensionBlacklist: [],
-    domainBlocklist: [],
-  });
-
-  if (!settings.captureEnabled) return;
+  if (!cachedSettings.captureEnabled) return;
 
   // Apply filters
-  if (!passesFilters(url, downloadItem.totalBytes, settings)) return;
-
-  // Check connection
-  if (connectionState !== "ready") {
-    await ensurePort();
-    if (connectionState !== "ready") return;
-  }
+  if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) return;
 
   // Best-effort cancel + erase to avoid stale entries in Chrome download UI.
   // If cancel fails (download already completed, etc.), we continue with the
@@ -265,10 +272,17 @@ function passesFilters(url, totalBytes, settings) {
 function getFileExtension(url) {
   try {
     const pathname = new URL(url).pathname;
-    const last = pathname.split("/").pop();
-    const dotIdx = last.lastIndexOf(".");
+    const filename = pathname.split("/").pop();
+    if (!filename) return "";
+
+    // Handle compound extensions (.tar.gz, .tar.bz2, .tar.xz)
+    for (const ext of [".tar.gz", ".tar.bz2", ".tar.xz"]) {
+      if (filename.toLowerCase().endsWith(ext)) return ext;
+    }
+
+    const dotIdx = filename.lastIndexOf(".");
     if (dotIdx === -1) return "";
-    return last.slice(dotIdx).toLowerCase();
+    return filename.slice(dotIdx).toLowerCase();
   } catch {
     return "";
   }
