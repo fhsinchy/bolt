@@ -1,4 +1,7 @@
-.PHONY: build test test-race test-v test-stress test-cover install uninstall clean
+.PHONY: build test test-race test-v test-stress test-cover install uninstall clean \
+        build-qt test-qt build-all test-all
+
+# --- Daemon (Go) ---
 
 BINARY = bolt
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -51,4 +54,19 @@ uninstall:
 clean:
 	rm -f $(BINARY)
 	rm -rf dist
+	rm -rf bolt-qt/build
 	go clean -testcache
+
+# --- Qt GUI ---
+
+build-qt:
+	@echo "bolt-qt: not yet buildable"
+
+test-qt:
+	@echo "bolt-qt: no tests yet"
+
+# --- Meta ---
+
+build-all: build build-qt
+
+test-all: test test-qt
