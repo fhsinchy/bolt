@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -14,6 +15,23 @@ func xdgRuntimeDir() string {
 		return dir
 	}
 	return fmt.Sprintf("/tmp/bolt-%d", os.Getuid())
+}
+
+// verifyDirOwnership checks that dir exists, is not a symlink, and is owned
+// by the current user. Returns an error if any check fails.
+func verifyDirOwnership(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("socket directory %s is a symlink", dir)
+	}
+	stat, ok := fi.Sys().(*syscall.Stat_t)
+	if ok && stat.Uid != uint32(os.Getuid()) {
+		return fmt.Errorf("socket directory %s is not owned by current user (uid %d, want %d)", dir, stat.Uid, os.Getuid())
+	}
+	return nil
 }
 
 // socketPath returns the path for the daemon's Unix socket.
@@ -37,6 +55,11 @@ func createSocketListener(path string) (net.Listener, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating socket directory: %w", err)
+	}
+
+	// Verify the socket directory is not a symlink and is owned by us.
+	if err := verifyDirOwnership(dir); err != nil {
+		return nil, fmt.Errorf("socket directory verification: %w", err)
 	}
 
 	// Remove stale socket file

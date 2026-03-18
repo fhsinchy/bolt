@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"golang.org/x/net/publicsuffix"
-
-	"github.com/fhsinchy/bolt/internal/config"
 )
 
-func newHTTPClient(cfg *config.Config) *http.Client {
+func newHTTPClient() *http.Client {
 	transport := &http.Transport{
 		MaxIdleConnsPerHost:   32,
 		MaxConnsPerHost:       0,

@@ -650,6 +650,98 @@ func TestUpdateDownloadChecksum_NotFound(t *testing.T) {
 	}
 }
 
+func TestInsertDownloadWithSegments(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	d := newTestDownload("d_atomic001")
+
+	segments := []model.Segment{
+		{DownloadID: "d_atomic001", Index: 0, StartByte: 0, EndByte: 511},
+		{DownloadID: "d_atomic001", Index: 1, StartByte: 512, EndByte: 1023},
+	}
+
+	if err := store.InsertDownloadWithSegments(ctx, d, segments); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	got, err := store.GetDownload(ctx, "d_atomic001")
+	if err != nil {
+		t.Fatalf("get download: %v", err)
+	}
+	if got.ID != "d_atomic001" {
+		t.Errorf("ID = %q, want d_atomic001", got.ID)
+	}
+
+	segs, err := store.GetSegments(ctx, "d_atomic001")
+	if err != nil {
+		t.Fatalf("get segments: %v", err)
+	}
+	if len(segs) != 2 {
+		t.Errorf("segments = %d, want 2", len(segs))
+	}
+}
+
+func TestInsertDownloadWithSegments_InvalidSegmentRollback(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	d := newTestDownload("d_atomic002")
+
+	// Create a segment referencing a different download ID, which won't cause
+	// an FK error since the download is in the same tx. Instead, we test
+	// rollback by inserting the download first (so a duplicate insert fails).
+	if err := store.InsertDownload(ctx, d); err != nil {
+		t.Fatalf("pre-insert: %v", err)
+	}
+
+	// Attempting InsertDownloadWithSegments with the same ID should fail
+	// (duplicate PK), and segments should not be affected.
+	d2 := newTestDownload("d_atomic002")
+	segs := []model.Segment{
+		{DownloadID: "d_atomic002", Index: 0, StartByte: 0, EndByte: 511},
+	}
+	err := store.InsertDownloadWithSegments(ctx, d2, segs)
+	if err == nil {
+		t.Fatal("expected error on duplicate insert, got nil")
+	}
+
+	// Segments should not have been inserted (tx rolled back).
+	gotSegs, err := store.GetSegments(ctx, "d_atomic002")
+	if err != nil {
+		t.Fatalf("get segments: %v", err)
+	}
+	if len(gotSegs) != 0 {
+		t.Errorf("segments after rollback = %d, want 0", len(gotSegs))
+	}
+}
+
+func TestCountAll(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	count, err := store.CountAll(ctx)
+	if err != nil {
+		t.Fatalf("count all (empty): %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0", count)
+	}
+
+	for _, id := range []string{"d_ca001", "d_ca002", "d_ca003"} {
+		d := newTestDownload(id)
+		if err := store.InsertDownload(ctx, d); err != nil {
+			t.Fatalf("insert %s: %v", id, err)
+		}
+	}
+
+	count, err = store.CountAll(ctx)
+	if err != nil {
+		t.Fatalf("count all: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+}
+
 func TestUnicodeFilenames(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()

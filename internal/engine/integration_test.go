@@ -48,7 +48,7 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 		cfg.MinSegmentSize = 1024
 
 		tc := newTestCallbacks()
-		eng := New(store, cfg, tc.callbacks)
+		eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 		eng.client = ts.Client()
 
 		ctx := context.Background()
@@ -136,7 +136,7 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 		cfg.MinSegmentSize = 1024
 
 		tc := newTestCallbacks()
-		eng := New(store, cfg, tc.callbacks)
+		eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 		eng.client = ts.Client()
 
 		ctx := context.Background()
@@ -229,7 +229,7 @@ func TestIntegration_MultiSegmentComplete(t *testing.T) {
 	cfg.MinSegmentSize = 1024
 
 	tc := newTestCallbacks()
-	eng := New(store, cfg, tc.callbacks)
+	eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 	eng.client = ts.Client()
 
 	ctx := context.Background()
@@ -293,7 +293,7 @@ func TestIntegration_RetryOnTransientErrors(t *testing.T) {
 	cfg.MinSegmentSize = 1024
 
 	tc := newTestCallbacks()
-	eng := New(store, cfg, tc.callbacks)
+	eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 	eng.client = ts.Client()
 
 	ctx := context.Background()

@@ -40,6 +40,62 @@ func (s *Store) InsertDownload(ctx context.Context, d *model.Download) error {
 	return nil
 }
 
+// InsertDownloadWithSegments inserts a download and its segments atomically
+// within a single transaction. If either insert fails, both are rolled back.
+func (s *Store) InsertDownloadWithSegments(ctx context.Context, d *model.Download, segments []model.Segment) error {
+	headersJSON, err := marshalHeaders(d.Headers)
+	if err != nil {
+		return fmt.Errorf("marshal headers: %w", err)
+	}
+	checksumStr := formatChecksum(d.Checksum)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO downloads (
+			id, url, filename, dir, total_size, downloaded, status,
+			segments, speed_limit, headers, referer_url, checksum,
+			etag, last_modified, error, queue_order
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.URL, d.Filename, d.Dir, d.TotalSize, d.Downloaded,
+		string(d.Status), d.SegmentCount, d.SpeedLimit, headersJSON,
+		d.RefererURL, checksumStr, d.ETag, d.LastModified, d.Error,
+		d.QueueOrder,
+	)
+	if err != nil {
+		return fmt.Errorf("insert download: %w", err)
+	}
+
+	if len(segments) > 0 {
+		stmt, err := tx.PrepareContext(ctx, `
+			INSERT INTO segments (download_id, idx, start_byte, end_byte, downloaded, done)
+			VALUES (?, ?, ?, ?, ?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare insert segment: %w", err)
+		}
+		defer stmt.Close()
+
+		for _, seg := range segments {
+			done := 0
+			if seg.Done {
+				done = 1
+			}
+			if _, err := stmt.ExecContext(ctx,
+				seg.DownloadID, seg.Index, seg.StartByte, seg.EndByte,
+				seg.Downloaded, done,
+			); err != nil {
+				return fmt.Errorf("insert segment %d: %w", seg.Index, err)
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
 // GetDownload retrieves a single download by ID.
 // Returns model.ErrNotFound if the download does not exist.
 func (s *Store) GetDownload(ctx context.Context, id string) (*model.Download, error) {
@@ -231,6 +287,17 @@ func (s *Store) CountByStatus(ctx context.Context, status model.Status) (int, er
 		string(status)).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count by status: %w", err)
+	}
+	return count, nil
+}
+
+// CountAll counts all downloads regardless of status.
+func (s *Store) CountAll(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM downloads`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count all: %w", err)
 	}
 	return count, nil
 }

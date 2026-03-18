@@ -13,7 +13,16 @@ const wsWriteTimeout = 5 * time.Second
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"*"},
+		// Restrict origins to localhost. Browser extensions connect from
+		// chrome-extension:// or moz-extension:// which are not subject
+		// to CORS origin checks. Permissive origins are not needed and
+		// would widen the attack surface if the auth token leaked.
+		OriginPatterns: []string{
+			"http://localhost:*",
+			"http://127.0.0.1:*",
+			"https://localhost:*",
+			"https://127.0.0.1:*",
+		},
 	})
 	if err != nil {
 		slog.Error("websocket accept", "error", err)

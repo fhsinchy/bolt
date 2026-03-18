@@ -285,7 +285,7 @@ func TestDaemon_DownloadViaAPI(t *testing.T) {
 			continue
 		}
 
-		if msg["type"] == "download_completed" {
+		if msg["type"] == "completed" {
 			break
 		}
 	}

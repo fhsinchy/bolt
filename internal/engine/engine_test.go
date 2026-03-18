@@ -67,7 +67,7 @@ func setupEngine(t *testing.T) (*Engine, *db.Store, *testCallbacks, string) {
 	cfg.MinSegmentSize = 1024
 
 	tc := newTestCallbacks()
-	eng := New(store, cfg, tc.callbacks)
+	eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 	return eng, store, tc, tmpDir
 }
 
@@ -284,7 +284,7 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		cfg.MaxRetries = 3
 		cfg.MinSegmentSize = 1024
 		tc := newTestCallbacks()
-		eng := New(store, cfg, tc.callbacks)
+		eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 		eng.client = ts.Client()
 
 		ctx := context.Background()
@@ -332,7 +332,7 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		cfg.MaxRetries = 3
 		cfg.MinSegmentSize = 1024
 		tc := newTestCallbacks()
-		eng := New(store, cfg, tc.callbacks)
+		eng := New(store, func() config.Config { return *cfg }, tc.callbacks)
 		eng.client = ts.Client()
 
 		ctx, cancel := context.WithCancel(context.Background())

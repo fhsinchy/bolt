@@ -57,7 +57,7 @@ func New(cfgPath string) (*Daemon, error) {
 	callbacks := svc.EngineCallbacks()
 
 	// 4. Create engine with callbacks
-	eng := engine.New(store, cfg, callbacks)
+	eng := engine.New(store, svc.GetConfig, callbacks)
 
 	// 5. Create queue
 	queueMgr := queue.New(store, cfg.MaxConcurrent,
@@ -75,7 +75,7 @@ func New(cfgPath string) (*Daemon, error) {
 	svc.SetQueue(queueMgr)
 
 	// 7. Create HTTP server
-	srv := server.New(svc, cfg)
+	srv := server.New(svc)
 
 	return &Daemon{
 		cfg:     cfg,
@@ -142,8 +142,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	unixSrv := newHTTPServer()
 	loopbackSrv := newHTTPServer()
 
-	go unixSrv.Serve(d.unixLn)
-	go loopbackSrv.Serve(d.loopbackLn)
+	serveFailed := make(chan error, 2)
+	go func() { serveFailed <- unixSrv.Serve(d.unixLn) }()
+	go func() { serveFailed <- loopbackSrv.Serve(d.loopbackLn) }()
 
 	// 7. Notify systemd
 	sdNotify("READY=1")
@@ -153,13 +154,21 @@ func (d *Daemon) Run(ctx context.Context) error {
 		"loopback", loopbackAddr,
 	)
 
-	// 8. Block until signal
-	<-ctx.Done()
+	// 8. Block until signal or listener failure
+	var serveErr error
+	select {
+	case <-ctx.Done():
+	case err := <-serveFailed:
+		if err != nil && err != http.ErrServerClosed {
+			slog.Error("listener failed", "error", err)
+			serveErr = fmt.Errorf("listener failed: %w", err)
+		}
+	}
 
 	// 9. Graceful shutdown
 	d.shutdown(unixSrv, loopbackSrv)
 
-	return nil
+	return serveErr
 }
 
 func (d *Daemon) shutdown(unixSrv, loopbackSrv *http.Server) {
@@ -189,13 +198,18 @@ func (d *Daemon) shutdown(unixSrv, loopbackSrv *http.Server) {
 }
 
 // dataDir returns the Bolt data directory, creating it if needed.
+// Respects $XDG_DATA_HOME, falling back to ~/.local/share.
 func dataDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".local", "share")
 	}
-	dir := filepath.Join(home, ".local", "share", "bolt")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir := filepath.Join(base, "bolt")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil

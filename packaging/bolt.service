@@ -13,6 +13,9 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
+# ReadWritePaths must include the config dir, data dir, and download dir.
+# Users with a non-default download_dir should add it here or use a drop-in:
+#   systemctl --user edit bolt  →  [Service]\nReadWritePaths=/custom/path
 ReadWritePaths=%h/.config/bolt %h/.local/share/bolt %h/Downloads
 PrivateTmp=true
 

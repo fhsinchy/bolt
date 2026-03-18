@@ -75,7 +75,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			token = strings.TrimPrefix(auth, "Bearer ")
 		}
 
-		if token != s.cfg.AuthToken {
+		if token != s.svc.AuthToken() {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "UNAUTHORIZED")
 			return
 		}

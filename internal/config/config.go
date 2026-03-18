@@ -30,7 +30,7 @@ func Dir() string {
 		base = filepath.Join(defaultDownloadDir(), ".config")
 	}
 	dir := filepath.Join(base, "bolt")
-	_ = os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o700)
 	return dir
 }
 
@@ -88,7 +88,8 @@ func Load(path string) (*Config, error) {
 // Save writes the configuration to path as pretty-printed JSON. Parent
 // directories are created automatically if they do not exist.
 func (c *Config) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
@@ -97,8 +98,34 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	// Write to temp file + rename for atomic save.
+	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("syncing config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("setting config permissions: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("renaming config: %w", err)
 	}
 
 	return nil

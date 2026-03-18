@@ -57,7 +57,6 @@ internal/
   testutil/                Test helpers (httptest server)
 extensions/
   chrome/                  Chrome browser extension
-  firefox/                 Firefox browser extension
 images/                    Source icons
 packaging/
   bolt.service             Systemd user unit (Type=notify, hardened)
@@ -99,9 +98,8 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
-make build-extension         # build both Chrome and Firefox zips
+make build-extension         # build Chrome extension zip
 make build-extension-chrome  # zip extensions/chrome/ → dist/bolt-capture-chrome.zip
-make build-extension-firefox # zip extensions/firefox/ → dist/bolt-capture-firefox.zip
 make install     # build + install binary + systemd unit + .desktop + icon
 make uninstall   # stop + disable + remove binary + unit + .desktop + icon
 make clean       # remove binary, clear test cache

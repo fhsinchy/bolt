@@ -50,7 +50,7 @@ func TestStress_ConcurrentQueuePressure(t *testing.T) {
 		OnFailed:    func(id string, dl model.Download, err error) { failedCh <- id },
 	}
 
-	eng := NewWithClient(store, cfg, cb, ts.Client())
+	eng := NewWithClient(store, func() config.Config { return *cfg }, cb, ts.Client())
 
 	// Wire queue completion to callbacks after queue is created
 	var queueMgr *queue.Manager

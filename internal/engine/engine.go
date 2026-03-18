@@ -22,7 +22,7 @@ import (
 // Engine orchestrates the full download lifecycle.
 type Engine struct {
 	store     *db.Store
-	cfg       *config.Config
+	cfgFn     func() config.Config // returns a consistent snapshot
 	callbacks *Callbacks
 	client    *http.Client
 	limiter   *rate.Limiter
@@ -42,12 +42,13 @@ type activeDownload struct {
 }
 
 // New creates a new Engine.
-func New(store *db.Store, cfg *config.Config, callbacks *Callbacks) *Engine {
+func New(store *db.Store, cfgFn func() config.Config, callbacks *Callbacks) *Engine {
+	cfg := cfgFn()
 	e := &Engine{
 		store:     store,
-		cfg:       cfg,
+		cfgFn:     cfgFn,
 		callbacks: callbacks,
-		client:    newHTTPClient(cfg),
+		client:    newHTTPClient(),
 		active:    make(map[string]*activeDownload),
 	}
 	e.setLimiter(cfg.GlobalSpeedLimit)
@@ -55,10 +56,11 @@ func New(store *db.Store, cfg *config.Config, callbacks *Callbacks) *Engine {
 }
 
 // NewWithClient creates a new Engine with a custom HTTP client (for testing).
-func NewWithClient(store *db.Store, cfg *config.Config, callbacks *Callbacks, client *http.Client) *Engine {
+func NewWithClient(store *db.Store, cfgFn func() config.Config, callbacks *Callbacks, client *http.Client) *Engine {
+	cfg := cfgFn()
 	e := &Engine{
 		store:     store,
-		cfg:       cfg,
+		cfgFn:     cfgFn,
 		callbacks: callbacks,
 		client:    client,
 		active:    make(map[string]*activeDownload),
@@ -106,6 +108,9 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		return nil, err
 	}
 
+	// Snapshot config once for this operation
+	cfg := e.cfgFn()
+
 	// Probe the URL
 	probeResult, err := Probe(ctx, e.client, req.URL, req.Headers)
 	if err != nil {
@@ -127,7 +132,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	// Determine directory
 	dir := req.Dir
 	if dir == "" {
-		dir = e.cfg.DownloadDir
+		dir = cfg.DownloadDir
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating download directory: %w", err)
@@ -154,7 +159,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	// Determine segment count
 	segCount := req.Segments
 	if segCount <= 0 {
-		segCount = e.cfg.DefaultSegments
+		segCount = cfg.DefaultSegments
 	}
 
 	// Fallback to single connection if no range support or unknown size
@@ -163,8 +168,8 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	}
 
 	// Respect minimum segment size
-	if probeResult.TotalSize > 0 && e.cfg.MinSegmentSize > 0 {
-		maxSegs := probeResult.TotalSize / e.cfg.MinSegmentSize
+	if probeResult.TotalSize > 0 && cfg.MinSegmentSize > 0 {
+		maxSegs := probeResult.TotalSize / cfg.MinSegmentSize
 		if maxSegs < 1 {
 			maxSegs = 1
 		}
@@ -209,14 +214,10 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		QueueOrder:   queueOrder,
 	}
 
-	if err := e.store.InsertDownload(ctx, dl); err != nil {
-		return nil, fmt.Errorf("inserting download: %w", err)
-	}
-
-	// Compute segments
+	// Compute segments and insert download + segments atomically
 	segments := computeSegments(id, probeResult.TotalSize, segCount)
-	if err := e.store.InsertSegments(ctx, segments); err != nil {
-		return nil, fmt.Errorf("inserting segments: %w", err)
+	if err := e.store.InsertDownloadWithSegments(ctx, dl, segments); err != nil {
+		return nil, fmt.Errorf("inserting download: %w", err)
 	}
 
 	if e.callbacks != nil && e.callbacks.OnAdded != nil {
@@ -242,6 +243,8 @@ func (e *Engine) StartDownload(ctx context.Context, id string) error {
 }
 
 func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments []model.Segment) error {
+	// Snapshot config once for this download
+	cfg := e.cfgFn()
 	e.mu.Lock()
 	if _, exists := e.active[dl.ID]; exists {
 		e.mu.Unlock()
@@ -308,7 +311,7 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 				file:     file,
 				limiter:  e.limiter,
 			}
-			w.RunWithRetry(dlCtx, e.cfg.MaxRetries)
+			w.RunWithRetry(dlCtx, cfg.MaxRetries)
 		}(i)
 	}
 
@@ -512,16 +515,19 @@ func (e *Engine) ListDownloads(ctx context.Context, filter model.ListFilter) ([]
 	return e.store.ListDownloads(ctx, filter.Status, filter.Limit, filter.Offset)
 }
 
-// Start sets all previously-active downloads to queued status (crash recovery).
+// Start recovers stale downloads on startup (crash recovery).
+// Active downloads are re-queued. Downloads interrupted during checksum
+// verification are also re-queued so they restart and re-verify.
 // The queue manager will start them according to the concurrency limit.
 func (e *Engine) Start(ctx context.Context) error {
-	downloads, err := e.store.ListDownloads(ctx, string(model.StatusActive), 0, 0)
-	if err != nil {
-		return fmt.Errorf("loading active downloads: %w", err)
-	}
-
-	for i := range downloads {
-		_ = e.store.UpdateDownloadStatus(ctx, downloads[i].ID, model.StatusQueued, "")
+	for _, status := range []model.Status{model.StatusActive, model.StatusVerifying} {
+		downloads, err := e.store.ListDownloads(ctx, string(status), 0, 0)
+		if err != nil {
+			return fmt.Errorf("loading %s downloads: %w", status, err)
+		}
+		for i := range downloads {
+			_ = e.store.UpdateDownloadStatus(ctx, downloads[i].ID, model.StatusQueued, "")
+		}
 	}
 
 	return nil

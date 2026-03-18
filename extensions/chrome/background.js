@@ -132,11 +132,6 @@ async function sendToBolt(config, body) {
   if (resp.status === 409) {
     const data = await resp.json().catch(() => ({}));
     if (data.code === 'DUPLICATE_FILENAME') {
-      // Show Bolt window — GUI will handle the duplicate dialog
-      fetch(`${config.serverUrl}/api/window/show`, {
-        method: 'POST',
-        headers,
-      }).catch(() => {});
       return data;
     }
   }

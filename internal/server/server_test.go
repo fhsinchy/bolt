@@ -60,7 +60,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	svc := service.New(nil, nil, store, cfg, cfgPath)
 	callbacks := svc.EngineCallbacks()
 
-	eng := engine.NewWithClient(store, cfg, callbacks, fileServer.Client())
+	eng := engine.NewWithClient(store, svc.GetConfig, callbacks, fileServer.Client())
 
 	queueMgr := queue.New(store, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
@@ -71,7 +71,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	svc.SetEngine(eng)
 	svc.SetQueue(queueMgr)
 
-	srv := New(svc, cfg)
+	srv := New(svc)
 	handler := srv.Handler()
 
 	return &testEnv{
@@ -287,8 +287,57 @@ func TestWebSocket(t *testing.T) {
 		t.Fatalf("unmarshal ws msg: %v", err)
 	}
 
-	if msg["type"] != "download_added" {
-		t.Fatalf("expected type download_added, got %v", msg["type"])
+	if msg["type"] != "added" {
+		t.Fatalf("expected type added, got %v", msg["type"])
+	}
+	if msg["data"] == nil {
+		t.Fatal("expected data field in ws message")
+	}
+}
+
+func TestUpdateConfig_InvalidRollback(t *testing.T) {
+	te := newTestEnv(t)
+
+	// Get the original config value.
+	getRR := te.doRequest("GET", "/api/config", nil, te.cfg.AuthToken)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("get config: expected 200, got %d", getRR.Code)
+	}
+	var origCfg map[string]any
+	json.Unmarshal(getRR.Body.Bytes(), &origCfg)
+	origSegments := origCfg["default_segments"]
+
+	// Send invalid config update (default_segments=0 is out of range 1-32).
+	body := map[string]int{"default_segments": 0}
+	rr := te.doRequest("PUT", "/api/config", body, te.cfg.AuthToken)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify config was NOT mutated.
+	getRR = te.doRequest("GET", "/api/config", nil, te.cfg.AuthToken)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("get config after rollback: expected 200, got %d", getRR.Code)
+	}
+	var afterCfg map[string]any
+	json.Unmarshal(getRR.Body.Bytes(), &afterCfg)
+	if afterCfg["default_segments"] != origSegments {
+		t.Errorf("default_segments changed to %v after invalid update, want %v", afterCfg["default_segments"], origSegments)
+	}
+}
+
+func TestGetStats_TotalCount(t *testing.T) {
+	te := newTestEnv(t)
+
+	rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp map[string]any
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+	if _, ok := resp["total_count"]; !ok {
+		t.Fatal("response missing 'total_count' key")
 	}
 }
 

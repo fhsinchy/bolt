@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
@@ -19,6 +20,7 @@ type Service struct {
 	queue   *queue.Manager
 	store   *db.Store
 	cfg     *config.Config
+	cfgMu   sync.RWMutex
 	cfgPath string
 	clients *ClientHub
 }
@@ -72,10 +74,6 @@ func (s *Service) CancelDownload(ctx context.Context, id string, deleteFile bool
 	return s.engine.CancelDownload(ctx, id, deleteFile)
 }
 
-func (s *Service) RemoveDownload(ctx context.Context, id string, deleteFile bool) error {
-	return s.engine.CancelDownload(ctx, id, deleteFile)
-}
-
 func (s *Service) RefreshURL(ctx context.Context, id string, newURL string, headers map[string]string) error {
 	return s.engine.RefreshURL(ctx, id, newURL, headers)
 }
@@ -102,10 +100,12 @@ func (s *Service) GetStats(ctx context.Context) map[string]any {
 	active, _ := s.store.CountByStatus(ctx, model.StatusActive)
 	queued, _ := s.store.CountByStatus(ctx, model.StatusQueued)
 	completed, _ := s.store.CountByStatus(ctx, model.StatusCompleted)
+	total, _ := s.store.CountAll(ctx)
 	return map[string]any{
 		"active_count":    active,
 		"queued_count":    queued,
 		"completed_count": completed,
+		"total_count":     total,
 		"version":         "0.4.0-dev",
 	}
 }
@@ -118,16 +118,31 @@ func (s *Service) ProbeURL(ctx context.Context, rawURL string, headers map[strin
 
 // --- Config ---
 
-func (s *Service) GetConfig() *config.Config {
-	return s.cfg
+func (s *Service) GetConfig() config.Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return *s.cfg
+}
+
+func (s *Service) AuthToken() string {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg.AuthToken
 }
 
 func (s *Service) UpdateConfig(ctx context.Context, apply func(cfg *config.Config)) error {
-	apply(s.cfg)
-	if err := s.cfg.Validate(); err != nil {
+	s.cfgMu.Lock()
+	defer s.cfgMu.Unlock()
+	snapshot := *s.cfg // shallow copy
+	apply(&snapshot)
+	if err := snapshot.Validate(); err != nil {
 		return err
 	}
-	return s.cfg.Save(s.cfgPath)
+	if err := snapshot.Save(s.cfgPath); err != nil {
+		return err
+	}
+	*s.cfg = snapshot // commit
+	return nil
 }
 
 func (s *Service) SetMaxConcurrent(max int) {
@@ -196,55 +211,55 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 	return &engine.Callbacks{
 		OnProgress: func(id string, update model.ProgressUpdate) {
 			s.broadcastEvent("progress", map[string]any{
-				"download_id": id,
-				"downloaded":  update.Downloaded,
-				"total_size":  update.TotalSize,
-				"speed":       update.Speed,
-				"eta":         update.ETA,
-				"status":      update.Status,
+				"id":         id,
+				"downloaded": update.Downloaded,
+				"total":      update.TotalSize,
+				"speed":      update.Speed,
+				"eta":        update.ETA,
+				"status":     update.Status,
 			})
 		},
 		OnCompleted: func(id string, dl model.Download) {
 			s.queue.OnDownloadComplete(id)
-			s.broadcastEvent("download_completed", map[string]any{
-				"download_id": id,
-				"filename":    dl.Filename,
+			s.broadcastEvent("completed", map[string]any{
+				"id":       id,
+				"filename": dl.Filename,
 			})
-			if s.cfg.Notifications {
+			if s.notifications() {
 				_ = notify.Send("Download Complete", dl.Filename)
 			}
 		},
 		OnFailed: func(id string, dl model.Download, err error) {
 			s.queue.OnDownloadComplete(id)
-			s.broadcastEvent("download_failed", map[string]any{
-				"download_id": id,
-				"error":       err.Error(),
+			s.broadcastEvent("failed", map[string]any{
+				"id":    id,
+				"error": err.Error(),
 			})
-			if s.cfg.Notifications {
+			if s.notifications() {
 				_ = notify.Send("Download Failed", dl.Filename+": "+err.Error())
 			}
 		},
 		OnPaused: func(id string) {
 			s.queue.OnDownloadComplete(id)
-			s.broadcastEvent("download_paused", map[string]any{
-				"download_id": id,
+			s.broadcastEvent("paused", map[string]any{
+				"id": id,
 			})
 		},
 		OnResumed: func(id string) {
-			s.broadcastEvent("download_resumed", map[string]any{
-				"download_id": id,
+			s.broadcastEvent("resumed", map[string]any{
+				"id": id,
 			})
 		},
 		OnAdded: func(dl model.Download) {
-			s.broadcastEvent("download_added", map[string]any{
-				"download_id": dl.ID,
-				"filename":    dl.Filename,
-				"total_size":  dl.TotalSize,
+			s.broadcastEvent("added", map[string]any{
+				"id":       dl.ID,
+				"url":      dl.URL,
+				"filename": dl.Filename,
 			})
 		},
 		OnRemoved: func(id string) {
-			s.broadcastEvent("download_removed", map[string]any{
-				"download_id": id,
+			s.broadcastEvent("removed", map[string]any{
+				"id": id,
 			})
 		},
 	}
@@ -253,15 +268,23 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 // OnResumedCallback returns a callback for the queue manager's onResumed parameter.
 func (s *Service) OnResumedCallback() func(id string) {
 	return func(id string) {
-		s.broadcastEvent("download_resumed", map[string]any{
-			"download_id": id,
+		s.broadcastEvent("resumed", map[string]any{
+			"id": id,
 		})
 	}
 }
 
+func (s *Service) notifications() bool {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg.Notifications
+}
+
 func (s *Service) broadcastEvent(eventType string, data map[string]any) {
-	data["type"] = eventType
-	msg, err := json.Marshal(data)
+	msg, err := json.Marshal(map[string]any{
+		"type": eventType,
+		"data": data,
+	})
 	if err != nil {
 		slog.Error("marshal broadcast event", "error", err)
 		return

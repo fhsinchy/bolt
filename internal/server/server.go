@@ -4,21 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/service"
 )
 
 // Server provides the HTTP API for controlling the download engine.
 type Server struct {
 	svc *service.Service
-	cfg *config.Config
 }
 
 // New creates a new Server.
-func New(svc *service.Service, cfg *config.Config) *Server {
+func New(svc *service.Service) *Server {
 	return &Server{
 		svc: svc,
-		cfg: cfg,
 	}
 }
 

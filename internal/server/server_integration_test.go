@@ -83,7 +83,7 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	svc := service.New(nil, nil, store, cfg, cfgPath)
 	callbacks := svc.EngineCallbacks()
 
-	eng := engine.NewWithClient(store, cfg, callbacks, fileServer.Client())
+	eng := engine.NewWithClient(store, svc.GetConfig, callbacks, fileServer.Client())
 
 	queueMgr := queue.New(store, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
@@ -94,7 +94,7 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	svc.SetEngine(eng)
 	svc.SetQueue(queueMgr)
 
-	srv := New(svc, cfg)
+	srv := New(svc)
 	handler := srv.Handler()
 
 	// Listen on a random port.
@@ -350,8 +350,8 @@ func TestIntegration_WebSocketEvents(t *testing.T) {
 		t.Fatalf("unmarshal ws message: %v", err)
 	}
 
-	if msg["type"] != "download_added" {
-		t.Fatalf("expected type download_added, got %v", msg["type"])
+	if msg["type"] != "added" {
+		t.Fatalf("expected type added, got %v", msg["type"])
 	}
 }
 
