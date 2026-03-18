@@ -100,6 +100,7 @@ void DaemonClient::resetParserState() {
     m_contentLength = -1;
     m_responseStatusCode = 0;
     m_headersComplete = false;
+    m_contentLengthFound = false;
 }
 
 void DaemonClient::sendRequest(const QByteArray &method, const QByteArray &path,
@@ -127,6 +128,7 @@ void DaemonClient::processQueue() {
     request.append(m_currentRequest.path);
     request.append(" HTTP/1.1\r\n");
     request.append("Host: localhost\r\n");
+    request.append("Connection: keep-alive\r\n");
 
     if (!m_currentRequest.body.isEmpty()) {
         request.append("Content-Type: application/json\r\n");
@@ -163,15 +165,30 @@ void DaemonClient::onReadyRead() {
                 m_responseStatusCode = codeStr.toInt();
             }
 
-            // Parse Content-Length
+            // Parse headers for Content-Length and Transfer-Encoding
             QByteArray headers = m_headerBuffer.left(headerEnd);
             m_contentLength = 0;
+            m_contentLengthFound = false;
+            bool chunked = false;
             for (const QByteArray &line : headers.split('\n')) {
                 QByteArray trimmed = line.trimmed();
-                if (trimmed.toLower().startsWith("content-length:")) {
+                QByteArray lower = trimmed.toLower();
+                if (lower.startsWith("content-length:")) {
                     m_contentLength = trimmed.mid(15).trimmed().toInt();
-                    break;
+                    m_contentLengthFound = true;
+                } else if (lower.startsWith("transfer-encoding:")
+                           && lower.contains("chunked")) {
+                    chunked = true;
                 }
+            }
+
+            // If chunked or no Content-Length on a non-empty response,
+            // disconnect to resync — we can't parse this safely.
+            if (chunked || (!m_contentLengthFound && m_responseStatusCode != 204)) {
+                m_requestInFlight = false;
+                resetParserState();
+                m_socket->disconnectFromServer();
+                return;
             }
 
             // Move remaining data to body buffer

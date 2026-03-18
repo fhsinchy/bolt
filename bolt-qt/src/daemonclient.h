@@ -82,4 +82,5 @@ private:
     int m_contentLength = -1;
     int m_responseStatusCode = 0;
     bool m_headersComplete = false;
+    bool m_contentLengthFound = false;
 };

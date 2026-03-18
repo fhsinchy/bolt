@@ -24,7 +24,12 @@ SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     auto *browseButton = new QPushButton("Browse");
     dirLayout->addWidget(m_dirEdit, 1);
     dirLayout->addWidget(browseButton);
+    auto *dirHint = new QLabel(
+        "<small>Note: if the daemon runs sandboxed (systemd), only ~/Downloads may be writable.</small>");
+    dirHint->setWordWrap(true);
+    dirHint->setTextFormat(Qt::RichText);
     form->addRow("Download directory:", dirLayout);
+    form->addRow("", dirHint);
 
     // Max concurrent
     m_maxConcurrentSpin = new QSpinBox();

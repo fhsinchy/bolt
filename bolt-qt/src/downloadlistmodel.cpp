@@ -103,6 +103,8 @@ QStringList DownloadListModel::selectedIds(const QModelIndexList &indexes) const
 void DownloadListModel::resetSpeeds() {
     m_prevDownloaded.clear();
     m_speeds.clear();
+    if (!m_downloads.isEmpty())
+        emit dataChanged(index(0, ColSpeed), index(m_downloads.size() - 1, ColEta));
 }
 
 void DownloadListModel::updateSpeed(const Download &dl) {

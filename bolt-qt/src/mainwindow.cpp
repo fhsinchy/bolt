@@ -110,6 +110,8 @@ void MainWindow::onConnected() {
 
 void MainWindow::onDisconnected() {
     m_connectionLabel->setText("Disconnected \u2014 retrying...");
+    m_activeCountLabel->setText(QString());
+    m_totalSpeedLabel->setText(QString());
     m_model->resetSpeeds();
 }
 
