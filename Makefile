@@ -34,10 +34,8 @@ install: build build-host
 	cp $(BINARY) ~/.local/bin/
 	cp bolt-host ~/.local/bin/
 	@for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do \
-		if [ -d "$$(dirname $$dir)" ]; then \
-			mkdir -p $$dir; \
-			sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
-		fi; \
+		mkdir -p $$dir; \
+		sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
 	done
 	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/

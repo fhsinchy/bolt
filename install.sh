@@ -178,11 +178,9 @@ main() {
         for dir in "${HOME}/.config/google-chrome/NativeMessagingHosts" \
                    "${HOME}/.config/chromium/NativeMessagingHosts" \
                    "${HOME}/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"; do
-            if [ -d "$(dirname "$dir")" ]; then
-                mkdir -p "$dir"
-                sed "s|BOLT_HOST_PATH|${INSTALL_DIR}/bolt-host|" \
-                    "${extracted}/com.fhsinchy.bolt.json" > "${dir}/com.fhsinchy.bolt.json"
-            fi
+            mkdir -p "$dir"
+            sed "s|BOLT_HOST_PATH|${INSTALL_DIR}/bolt-host|" \
+                "${extracted}/com.fhsinchy.bolt.json" > "${dir}/com.fhsinchy.bolt.json"
         done
         info "Installed native messaging manifest"
     fi
@@ -272,7 +270,7 @@ UNIT
     success "Bolt ${version} installed successfully!"
     printf '\n'
     printf '  Run:        bolt\n'
-    printf '  Uninstall:  %s --uninstall\n' "$0"
+    printf '  Uninstall:  curl -fsSL https://raw.githubusercontent.com/fhsinchy/bolt/master/install.sh | sh -s -- --uninstall\n'
     printf '\n'
 }
 

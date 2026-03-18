@@ -818,11 +818,12 @@ Reused from `master` (`engine/segment.go`):
 
 ```json
 {
-    "code": 404,
     "error": "download not found",
-    "details": "no download with id d_01HXQ..."
+    "code": "NOT_FOUND"
 }
 ```
+
+The `error` field is a human-readable message. The `code` field is a machine-readable string constant (e.g., `NOT_FOUND`, `DUPLICATE_FILENAME`, `VALIDATION_ERROR`). HTTP status codes are conveyed via the response status line, not in the body.
 
 | Scenario | HTTP Status |
 |----------|-------------|

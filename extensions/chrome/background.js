@@ -139,7 +139,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
   const headers = await collectHeaders(url, tab?.url);
 
-  const resp = await sendWithConnection({
+  const resp = await sendWithConnectionFast({
     command: "add_download",
     data: { url, headers, referer_url: tab?.url || "" },
   });
@@ -234,6 +234,44 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
 // --- Content script messages ---
 
+// Shorter timeout for user-initiated actions (link clicks, context menu)
+// so the browser doesn't stall visibly if bolt-host or daemon hangs.
+const USER_ACTION_TIMEOUT_MS = 3000;
+
+function sendCommandWithTimeout(cmd, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!port) {
+      resolve(null);
+      return;
+    }
+    const id = String(nextId++);
+    cmd.id = id;
+
+    const timer = setTimeout(() => {
+      pendingCallbacks.delete(id);
+      resolve(null);
+    }, timeoutMs);
+
+    pendingCallbacks.set(id, (msg) => {
+      clearTimeout(timer);
+      resolve(msg);
+    });
+    try {
+      port.postMessage(cmd);
+    } catch {
+      clearTimeout(timer);
+      pendingCallbacks.delete(id);
+      resolve(null);
+    }
+  });
+}
+
+async function sendWithConnectionFast(cmd) {
+  await ensurePort();
+  if (connectionState === "host_unavailable") return null;
+  return sendCommandWithTimeout(cmd, USER_ACTION_TIMEOUT_MS);
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "download-link") return;
 
@@ -248,7 +286,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     const headers = await collectHeaders(msg.url, msg.pageUrl);
 
-    const resp = await sendWithConnection({
+    const resp = await sendWithConnectionFast({
       command: "add_download",
       data: { url: msg.url, headers, referer_url: msg.pageUrl || "" },
     });
