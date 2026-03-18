@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, development]
   pull_request:
-    branches: [master]
+    branches: [master, development]
 
 jobs:
   test:
@@ -16,7 +16,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Create frontend dist stub
-        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
-
+      - run: go vet ./...
       - run: go test ./... -race -count=1 -timeout 120s
