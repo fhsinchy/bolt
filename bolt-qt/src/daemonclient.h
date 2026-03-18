@@ -44,7 +44,7 @@ signals:
 private slots:
     void onSocketConnected();
     void onSocketDisconnected();
-    void onSocketError(QLocalSocket::LocalSocketError err);
+    void onSocketError(QLocalSocket::LocalSocketError);
     void onReadyRead();
     void tryConnect();
     void poll();
@@ -63,6 +63,7 @@ private:
     void processQueue();
     void handleResponse(int statusCode, const QByteArray &body, const QString &tag);
     void resetParserState();
+    void failAbandonedRequests();
 
     QLocalSocket *m_socket;
     QTimer *m_pollTimer;

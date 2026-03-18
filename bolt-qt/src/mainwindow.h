@@ -7,6 +7,7 @@
 #include <QAction>
 #include <QLabel>
 #include <QMainWindow>
+#include <QPointer>
 #include <QTableView>
 
 class MainWindow : public QMainWindow {
@@ -56,7 +57,11 @@ private:
     // Status bar labels
     QLabel *m_connectionLabel;
     QLabel *m_activeCountLabel;
+    QLabel *m_totalSpeedLabel;
 
     // Empty state
     QLabel *m_emptyLabel;
+
+    // Track open dialogs to prevent cross-talk
+    QPointer<QDialog> m_activeDialog;
 };

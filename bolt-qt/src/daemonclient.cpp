@@ -57,17 +57,41 @@ void DaemonClient::onSocketConnected() {
 void DaemonClient::onSocketDisconnected() {
     m_connected = false;
     m_pollTimer->stop();
-    m_requestInFlight = false;
-    m_pollInFlight = false;
-    m_queue.clear();
+    failAbandonedRequests();
     resetParserState();
     m_reconnectTimer->start();
     emit disconnected();
 }
 
 void DaemonClient::onSocketError(QLocalSocket::LocalSocketError) {
-    if (!m_connected && !m_reconnectTimer->isActive())
-        m_reconnectTimer->start();
+    if (!m_connected) {
+        if (!m_reconnectTimer->isActive())
+            m_reconnectTimer->start();
+        // Let the UI know we failed to connect (shows "Disconnected" instead of "Connecting...")
+        emit disconnected();
+    }
+}
+
+void DaemonClient::failAbandonedRequests() {
+    // Fail the in-flight request
+    if (m_requestInFlight) {
+        QString tag = m_currentRequest.tag;
+        m_requestInFlight = false;
+        if (tag == "probe")
+            emit probeFailed("Connection lost");
+        else if (tag != "poll" && tag != "fetchDownloads" && tag != "fetchStats")
+            emit requestFailed(tag, 0, "CONNECTION_LOST", "Connection lost");
+    }
+    // Fail all queued requests
+    while (!m_queue.isEmpty()) {
+        PendingRequest req = m_queue.dequeue();
+        if (req.tag == "probe")
+            emit probeFailed("Connection lost");
+        else if (req.tag != "poll" && req.tag != "fetchDownloads"
+                 && req.tag != "fetchStats" && req.tag != "fetchConfig")
+            emit requestFailed(req.tag, 0, "CONNECTION_LOST", "Connection lost");
+    }
+    m_pollInFlight = false;
 }
 
 void DaemonClient::resetParserState() {

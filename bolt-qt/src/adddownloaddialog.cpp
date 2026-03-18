@@ -89,6 +89,7 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     connect(m_client, &DaemonClient::downloadAdded, this, &AddDownloadDialog::onDownloadAdded);
     connect(m_client, &DaemonClient::requestFailed, this, &AddDownloadDialog::onRequestFailed);
     connect(m_client, &DaemonClient::configFetched, this, &AddDownloadDialog::onConfigFetched);
+    connect(m_client, &DaemonClient::disconnected, this, &AddDownloadDialog::onDisconnected);
 
     // Reset force flag when URL changes
     connect(m_urlEdit, &QLineEdit::textChanged, this, [this]() { m_force = false; });
@@ -183,4 +184,13 @@ void AddDownloadDialog::onRequestFailed(QString endpoint, int, QString errorCode
 void AddDownloadDialog::onConfigFetched(Config cfg) {
     m_dirEdit->setText(cfg.downloadDir);
     m_segmentsSpin->setValue(cfg.defaultSegments);
+}
+
+void AddDownloadDialog::onDisconnected() {
+    // Re-enable buttons that may have been disabled by in-flight requests
+    m_probeButton->setEnabled(true);
+    m_probeButton->setText("Probe");
+    m_downloadButton->setEnabled(true);
+    m_errorLabel->setText("Connection lost");
+    m_errorLabel->show();
 }

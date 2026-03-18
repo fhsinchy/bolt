@@ -23,6 +23,7 @@ private slots:
     void onDownloadAdded(Download dl);
     void onRequestFailed(QString endpoint, int statusCode, QString errorCode, QString errorMessage);
     void onConfigFetched(Config cfg);
+    void onDisconnected();
 
 private:
     DaemonClient *m_client;

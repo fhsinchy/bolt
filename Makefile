@@ -46,7 +46,11 @@ install: build build-host
 	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/
 	mkdir -p ~/.local/share/applications
-	sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
+	@if [ -f bolt-qt/build/bolt-qt ]; then \
+		sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop; \
+	else \
+		echo "Note: skipping bolt.desktop (bolt-qt not built)"; \
+	fi
 	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
 	cp images/icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
@@ -59,6 +63,7 @@ uninstall:
 	-systemctl --user disable bolt
 	rm -f ~/.local/bin/$(BINARY)
 	rm -f ~/.local/bin/bolt-host
+	rm -f ~/.local/bin/bolt-qt
 	rm -f ~/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.json
 	rm -f ~/.config/chromium/NativeMessagingHosts/com.fhsinchy.bolt.json
 	rm -f ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/com.fhsinchy.bolt.json

@@ -33,8 +33,11 @@ public:
     QString downloadIdAt(int row) const;
     QStringList selectedIds(const QModelIndexList &indexes) const;
 
+    double speedForId(const QString &id) const { return m_speeds.value(id, 0.0); }
+
 public slots:
     void updateFromPoll(const QVector<Download> &incoming);
+    void resetSpeeds();
 
 private:
     void updateSpeed(const Download &dl);

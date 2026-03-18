@@ -100,6 +100,11 @@ QStringList DownloadListModel::selectedIds(const QModelIndexList &indexes) const
     return ids;
 }
 
+void DownloadListModel::resetSpeeds() {
+    m_prevDownloaded.clear();
+    m_speeds.clear();
+}
+
 void DownloadListModel::updateSpeed(const Download &dl) {
     if (dl.status == "active" && m_prevDownloaded.contains(dl.id)) {
         qint64 delta = dl.downloaded - m_prevDownloaded[dl.id];

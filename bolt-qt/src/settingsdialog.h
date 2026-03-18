@@ -23,6 +23,7 @@ private slots:
     void onRequestFailed(QString endpoint, int statusCode, QString errorCode, QString errorMessage);
     void onSave();
     void onBrowse();
+    void onDisconnected();
 
 private:
     DaemonClient *m_client;

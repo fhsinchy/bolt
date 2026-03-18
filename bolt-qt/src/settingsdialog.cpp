@@ -81,6 +81,7 @@ SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     connect(m_client, &DaemonClient::configFetched, this, &SettingsDialog::onConfigFetched);
     connect(m_client, &DaemonClient::configUpdated, this, &SettingsDialog::onConfigUpdated);
     connect(m_client, &DaemonClient::requestFailed, this, &SettingsDialog::onRequestFailed);
+    connect(m_client, &DaemonClient::disconnected, this, &SettingsDialog::onDisconnected);
 
     // Fetch current config
     m_client->fetchConfig();
@@ -160,4 +161,10 @@ void SettingsDialog::onBrowse() {
     QString dir = QFileDialog::getExistingDirectory(this, "Select Directory", m_dirEdit->text());
     if (!dir.isEmpty())
         m_dirEdit->setText(dir);
+}
+
+void SettingsDialog::onDisconnected() {
+    m_saveButton->setEnabled(true);
+    m_errorLabel->setText("Connection lost");
+    m_errorLabel->show();
 }

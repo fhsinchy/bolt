@@ -8,6 +8,7 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelection>
 #include <QResizeEvent>
 #include <QIcon>
 #include <QLabel>
@@ -96,9 +97,11 @@ void MainWindow::setupToolbar() {
 void MainWindow::setupStatusBar() {
     m_connectionLabel = new QLabel("Connecting...");
     m_activeCountLabel = new QLabel();
+    m_totalSpeedLabel = new QLabel();
 
     statusBar()->addPermanentWidget(m_connectionLabel);
     statusBar()->addPermanentWidget(m_activeCountLabel);
+    statusBar()->addPermanentWidget(m_totalSpeedLabel);
 }
 
 void MainWindow::onConnected() {
@@ -107,10 +110,28 @@ void MainWindow::onConnected() {
 
 void MainWindow::onDisconnected() {
     m_connectionLabel->setText("Disconnected \u2014 retrying...");
+    m_model->resetSpeeds();
 }
 
 void MainWindow::onDownloadsFetched(const QVector<Download> &downloads) {
+    // Save selection by ID before model update (survives resets)
+    QStringList selectedIds = m_model->selectedIds(
+        m_tableView->selectionModel()->selectedRows());
+
     m_model->updateFromPoll(downloads);
+
+    // Restore selection by ID
+    if (!selectedIds.isEmpty()) {
+        QItemSelection sel;
+        for (int row = 0; row < m_model->rowCount(); row++) {
+            if (selectedIds.contains(m_model->downloadIdAt(row))) {
+                sel.select(m_model->index(row, 0),
+                           m_model->index(row, DownloadListModel::ColCount - 1));
+            }
+        }
+        if (!sel.isEmpty())
+            m_tableView->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
+    }
 
     int activeCount = 0;
     for (const Download &dl : downloads) {
@@ -121,6 +142,14 @@ void MainWindow::onDownloadsFetched(const QVector<Download> &downloads) {
     m_activeCountLabel->setText(activeCount > 0
         ? QString::number(activeCount) + " downloading"
         : QString());
+
+    // Sum speeds from model
+    double totalSpeed = 0.0;
+    for (const Download &dl : downloads) {
+        if (dl.status == "active")
+            totalSpeed += m_model->speedForId(dl.id);
+    }
+    m_totalSpeedLabel->setText(totalSpeed > 0.0 ? formatSpeed(totalSpeed) : QString());
 
     updateEmptyState();
     updateToolbarState();
@@ -168,8 +197,11 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void MainWindow::onAddUrl() {
+    if (m_activeDialog)
+        return;
     auto *dialog = new AddDownloadDialog(m_client, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    m_activeDialog = dialog;
     dialog->open();
 }
 
@@ -253,7 +285,10 @@ void MainWindow::onDelete() {
 }
 
 void MainWindow::onSettings() {
+    if (m_activeDialog)
+        return;
     auto *dialog = new SettingsDialog(m_client, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    m_activeDialog = dialog;
     dialog->open();
 }
