@@ -61,7 +61,7 @@ Create `bolt-qt/src/types.h` — header-only file with all data structs (`Downlo
 
 Note: `AddRequest::toJson()` must omit empty/zero fields — only include non-default values in the JSON. The daemon fills in defaults for omitted fields.
 
-Note: `Download::data()` for `Qt::ToolTipRole` should return "This download needs a new URL. Refresh UI planned for a future version." when `status == "refresh"`.
+Note: The `refresh` status tooltip ("This download needs a new URL. Refresh UI planned for a future version.") belongs in `DownloadListModel::data()` for `Qt::ToolTipRole`, not in the `Download` struct — `Download` is a plain data struct with no Qt model responsibilities.
 
 - [ ] **Step 3: Create minimal main.cpp**
 
@@ -109,7 +109,7 @@ Declare `DaemonClient` class with:
 In `daemonclient.cpp`, implement just the connection layer:
 - `socketPath()`: check `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback to `/tmp/bolt-<uid>/bolt.sock`
 - Constructor: create socket, timers, connect socket signals (`connected`, `disconnected`, `errorOccurred`), call `tryConnect()`
-- `tryConnect()`: connect to socket path. **Important:** use the full filesystem path with `QLocalSocket`. On Linux, `connectToServer(name)` may treat the argument as an abstract socket. Use the full path directly.
+- `tryConnect()`: connect to socket path. **Important:** On Qt 6.2+, use `m_socket->connectToServer(fullPath, QIODevice::ReadWrite)` after calling `m_socket->setServerName(fullPath)` — this ensures Qt treats it as a filesystem socket, not an abstract name. Verify by checking that the socket file at the path is actually opened (connection succeeds when daemon is running).
 - `onSocketConnected()`: emit `connected()`
 - `onSocketDisconnected()`: emit `disconnected()`, stop poll timer, clear parser state, start 3s reconnect timer
 - `onSocketError()`: if not connected, start reconnect timer
@@ -151,6 +151,7 @@ In `daemonclient.cpp`, add:
 - Wire `onSocketConnected()` to start 1s poll timer and trigger initial `fetchDownloads()`
 - Implement action methods: `pauseDownload()`, `resumeDownload()`, `retryDownload()`, `deleteDownload()` — each calls `sendRequest()` with appropriate POST/DELETE
 - Action response handling: on success, trigger immediate `fetchDownloads()`. On failure, emit `requestFailed()`.
+- **Redundant refresh guard:** If a `fetchDownloads` request is already queued or in flight (check `m_pollInFlight`), skip queuing another one. This prevents action-triggered refreshes from piling up behind a slow response.
 
 - [ ] **Step 6: Add to CMakeLists.txt**
 
@@ -163,10 +164,10 @@ Expected: Compiles without errors
 
 - [ ] **Step 8: Smoke-test against running daemon**
 
-Run the built binary directly. The DaemonClient constructor auto-connects, so if the daemon is running it should connect without any code changes. Verify by observing:
+Run the built binary directly. The DaemonClient constructor auto-connects, so if the daemon is running it should connect without any code changes. Use temporary `qDebug()` lines during this step to verify connect/disconnect/poll behavior — remove them before committing (production code should not have noisy debug logging by default). Verify:
 - No crash on startup
-- `qDebug` output from DaemonClient (add a few permanent `qDebug() << "connected"` / `qDebug() << "poll: N downloads"` lines in the signal handlers — these are useful long-term for debugging, not temporary)
-- If daemon is not running: verify reconnect timer fires (no crash, just retries silently)
+- Connects and polls when daemon is running
+- If daemon is not running: reconnect timer fires (no crash, just retries silently)
 
 - [ ] **Step 9: Commit**
 
@@ -203,7 +204,7 @@ Implement:
   1. Index incoming downloads by ID
   2. Walk existing rows backwards — remove any whose ID is missing from incoming
   3. Walk existing rows forward — update fields, calculate speed (EMA alpha=0.3), calculate ETA
-  4. Insert any incoming downloads not already in the model, preserving daemon queue order (insert at the position matching `queueOrder` relative to existing rows, not blindly appending)
+  4. Insert any incoming downloads not already in the model. For simplicity in V1, if new rows appear, do a full ordered replace instead of trying to merge — save selected IDs before, replace entire `m_downloads` with the incoming list (already ordered by daemon), restore selection by ID after. This avoids fiddly insertion logic while keeping daemon order.
   5. Update `m_prevDownloaded` map
   6. First poll after startup: speed stays 0 (no previous sample)
 
@@ -263,7 +264,7 @@ In `mainwindow.cpp`:
 
 In `mainwindow.cpp`:
 - `onSelectionChanged()` → `updateToolbarState()`: iterate selected rows, check download statuses per spec toolbar behavior table, enable/disable Pause/Resume/Retry/Delete
-- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status (client-side). If no selected rows are applicable, do nothing (no-op — don't fire requests). Otherwise send actions only for valid ones. Track success/failure count across responses. If some fail, show "N of M actions failed" in status bar. Guard: if `!m_client->isConnected()`, show brief error and return.
+- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status (client-side). If no selected rows are applicable, do nothing (no-op — don't fire requests). Otherwise send actions only for valid ones. Error handling: if any individual `requestFailed` fires, show a generic error in the status bar ("Action failed" with auto-clear after 5s). No per-batch counter needed in V1. Guard: if `!m_client->isConnected()`, show brief error and return.
 - `onDelete()`: show custom `QDialog` (not `QMessageBox::question`, which doesn't support checkboxes) with message, "Also delete downloaded file" checkbox (unchecked by default), and OK/Cancel. On OK, call `deleteDownload()` for each selected. Same disconnected guard.
 - `onRequestFailed()`: show brief error message in status bar (auto-clear after 5s)
 
