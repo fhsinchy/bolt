@@ -33,6 +33,12 @@ install: build build-host
 	mkdir -p ~/.local/bin
 	cp $(BINARY) ~/.local/bin/
 	cp bolt-host ~/.local/bin/
+	@if [ -f bolt-qt/build/bolt-qt ]; then \
+		cp bolt-qt/build/bolt-qt ~/.local/bin/; \
+		echo "Installed bolt-qt"; \
+	else \
+		echo "Note: bolt-qt not built (run 'make build-qt' first, requires Qt6 dev packages)"; \
+	fi
 	@for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do \
 		mkdir -p $$dir; \
 		sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \

@@ -59,9 +59,17 @@ cmd/bolt-host/
   nativemsg.go             Native messaging read/write (length-prefixed JSON)
   relay.go                 HTTP relay to daemon Unix socket
   socketpath.go            Socket path resolution
-bolt-qt/                   C++ Qt6 GUI (planned — not yet buildable)
-  CMakeLists.txt           Qt6 project definition
-  src/                     Qt source files
+bolt-qt/                   C++ Qt6 GUI (requires Qt6 dev packages)
+  CMakeLists.txt           Qt6 build configuration
+  src/
+    main.cpp               Entry point, QApplication setup
+    types.h                Data structs + JSON parsing + formatting helpers
+    daemonclient.h/.cpp    REST client over QLocalSocket (Unix socket)
+    downloadlistmodel.h/.cpp QAbstractTableModel with poll-based speed/ETA
+    progressdelegate.h/.cpp  Progress bar column delegate
+    mainwindow.h/.cpp      Main window (toolbar, download table, status bar)
+    adddownloaddialog.h/.cpp Add URL dialog with probing
+    settingsdialog.h/.cpp  Settings dialog with config read/write
 extensions/
   chrome/                  Chrome browser extension (Phase 2 — native messaging rewrite)
 images/                    Source icons
@@ -107,7 +115,7 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
-make build-qt    # build Qt GUI (not yet buildable)
+make build-qt    # build Qt GUI (requires Qt6 dev packages: qt6-qtbase-devel)
 make build-all   # build all components (daemon + bolt-host + Qt stub)
 make test-all    # test all components
 make install     # build + install binary + systemd unit + .desktop + icon
