@@ -88,34 +88,31 @@ make install       # build + install locally with systemd service
 make uninstall     # remove everything
 ```
 
+## Repository Structure
+
+This is a polyglot monorepo. The Go daemon is the primary component. GUI clients and the browser extension are separate projects with their own build systems.
+
+```
+cmd/bolt/           Daemon entry point
+internal/           Go packages (engine, queue, server, config, db, ...)
+go.mod              Go module (github.com/fhsinchy/bolt)
+bolt-qt/            C++ Qt6 GUI (not yet buildable)
+extensions/chrome/  Chrome extension (Phase 2 — native messaging rewrite)
+packaging/          Systemd unit, desktop entry
+docs/               PRD, TRD, specs
+```
+
 ## Architecture
 
 Standalone daemon — Unix socket API + download engine. No GUI, no CGO.
 
-```
-cmd/bolt/           Entry point (daemon / version / help)
-internal/
-  daemon/           Daemon lifecycle (startup, shutdown, socket, sdnotify)
-  engine/           Download engine (segmented downloading, retry, resume)
-  queue/            Queue manager (concurrency control)
-  server/           HTTP server (REST API + WebSocket)
-  service/          Coordination layer (engine + queue + WebSocket fan-out)
-  db/               SQLite data access layer
-  config/           Configuration management
-  notify/           Desktop notifications
-  model/            Shared types
-extensions/
-  chrome/           Chrome browser extension (Phase 2 — native messaging rewrite)
-```
-
-## Tech Stack
-
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.23+ |
-| Database | SQLite via `modernc.org/sqlite` (pure Go, no CGO) |
+| Daemon | Go 1.23+, pure static binary (`CGO_ENABLED=0`) |
+| Database | SQLite via `modernc.org/sqlite` (pure Go) |
 | WebSocket | `nhooyr.io/websocket` |
 | IPC | Unix socket (`$XDG_RUNTIME_DIR/bolt/bolt.sock`) |
+| GUI (planned) | C++ / Qt6 |
 
 ## License
 
