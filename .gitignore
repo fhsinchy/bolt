@@ -37,12 +37,10 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Wails build output
-build/bin/
-
-# Node
-node_modules/
-
-# Frontend build output
-frontend/dist/
-frontend/wailsjs/
+# Qt / CMake build artifacts
+bolt-qt/build/
+*.o
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
