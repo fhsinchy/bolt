@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "adddownloaddialog.h"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -173,7 +174,9 @@ void MainWindow::updateEmptyState() {
 }
 
 void MainWindow::onAddUrl() {
-    // Will be wired to AddDownloadDialog in Task 5
+    auto *dialog = new AddDownloadDialog(m_client, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->open();
 }
 
 void MainWindow::onPause() {

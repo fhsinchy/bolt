@@ -19,6 +19,8 @@ add_executable(bolt-qt
     src/progressdelegate.cpp
     src/mainwindow.h
     src/mainwindow.cpp
+    src/adddownloaddialog.h
+    src/adddownloaddialog.cpp
 )
 
 target_link_libraries(bolt-qt PRIVATE
