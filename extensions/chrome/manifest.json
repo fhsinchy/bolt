@@ -3,6 +3,7 @@
   "name": "Bolt Download Manager",
   "version": "2.0.0",
   "description": "Hand off browser downloads to Bolt",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3/IHjmdAvKbvTuWkJ73bJQBnW0+JPMJM7wn3lehA9m0NGSlip+0/Ejcwaga2NTBRPgrXr/oIHOD+8w9roC4ALHU3wwuvr9AJiygpH7njqzZm3vW+Qw/Jo9/jTIYBPYIWTTx2+TsaFU7w9hCUzny3PxTJjKmTVOoJTcZxUy/RFPOtWVf1OENUGDwi0FkGHP45W17sKxc1lL2xE2SzmZ9d0jw6Mv6Or3pzFiCNIP74EduFRK5+E5eeO0XMSQmiai0yu1xatkmcIZSu5OPBxGoEeapiCNR6DkCQPpEzox9PVllkDmhq+QKEB7wBlxMMl3YXO9kvoglNRiBH7RQgJTxrNQIDAQAB",
   "permissions": [
     "downloads",
     "contextMenus",

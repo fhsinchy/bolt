@@ -37,7 +37,7 @@ install: build build-host
 		echo "WARNING: Native messaging manifest not installed — EXTENSION_ID_PLACEHOLDER not resolved."; \
 		echo "  See Task 8 in docs/plans/2026-03-18-bolt-host-and-chrome-extension.md for setup."; \
 	else \
-		for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts; do \
+		for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do \
 			if [ -d "$$(dirname $$dir)" ]; then \
 				mkdir -p $$dir; \
 				sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
@@ -62,6 +62,7 @@ uninstall:
 	rm -f ~/.local/bin/bolt-host
 	rm -f ~/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.json
 	rm -f ~/.config/chromium/NativeMessagingHosts/com.fhsinchy.bolt.json
+	rm -f ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/com.fhsinchy.bolt.json
 	rm -f ~/.config/systemd/user/bolt.service
 	rm -f ~/.local/share/applications/bolt.desktop
 	rm -f ~/.local/share/icons/hicolor/256x256/apps/bolt.png

@@ -180,7 +180,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
   const headers = await collectHeaders(url, downloadItem.referrer);
 
-  const resp = await sendCommand({
+  const resp = await sendWithConnection({
     command: "add_download",
     data: {
       url,
