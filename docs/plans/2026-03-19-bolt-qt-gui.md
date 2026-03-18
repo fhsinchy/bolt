@@ -104,57 +104,69 @@ Declare `DaemonClient` class with:
 - All signals from spec (connected, disconnected, downloadsFetched, downloadAdded, probeCompleted, probeFailed, configFetched, configUpdated, statsFetched, requestFailed)
 - Private slots: onSocketConnected, onSocketDisconnected, onSocketError, onReadyRead, tryConnect, poll
 
-- [ ] **Step 2: Implement socket path resolution and connection lifecycle**
+- [ ] **Step 2: Implement socket path resolution, connect/disconnect lifecycle**
 
-In `daemonclient.cpp`, implement:
+In `daemonclient.cpp`, implement just the connection layer:
 - `socketPath()`: check `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback to `/tmp/bolt-<uid>/bolt.sock`
-- Constructor: create socket, timers, connect socket signals, call `tryConnect()`
-- `tryConnect()`: connect to socket path. **Important:** use `QLocalSocket::setServerName(fullPath)` with the full filesystem path, then `connectToServer()` — or use `connectToServer(path, QLocalSocket::FullServerName)` (Qt 6.2+). Do NOT pass just a name, which would create an abstract socket.
-- `onSocketConnected()`: emit `connected()`, start 1s poll timer, do initial `fetchDownloads()`
+- Constructor: create socket, timers, connect socket signals (`connected`, `disconnected`, `errorOccurred`), call `tryConnect()`
+- `tryConnect()`: connect to socket path. **Important:** use the full filesystem path with `QLocalSocket`. On Linux, `connectToServer(name)` may treat the argument as an abstract socket. Use the full path directly.
+- `onSocketConnected()`: emit `connected()`
 - `onSocketDisconnected()`: emit `disconnected()`, stop poll timer, clear parser state, start 3s reconnect timer
 - `onSocketError()`: if not connected, start reconnect timer
 
-- [ ] **Step 3: Implement HTTP request serialization and response parsing**
+At this point the client connects and reconnects but cannot send requests yet.
 
-In `daemonclient.cpp`, implement:
+- [ ] **Step 3: Implement HTTP request serialization and one simple GET**
+
+In `daemonclient.cpp`, add:
 - `sendRequest(method, path, body, tag)`: enqueue `PendingRequest`, call `processQueue()`
 - `processQueue()`: if `m_requestInFlight` or queue empty, return. Dequeue, build HTTP/1.1 request bytes:
   ```
   METHOD path HTTP/1.1\r\n
   Host: localhost\r\n
-  Content-Type: application/json\r\n    (for POST/PUT with body)
+  Content-Type: application/json\r\n    (only for POST/PUT with body)
   Content-Length: N\r\n
   \r\n
   body
   ```
   Write to socket, set `m_requestInFlight = true`
 - `onReadyRead()`: state machine — accumulate data into `m_headerBuffer` until `\r\n\r\n` found, extract status code and Content-Length, switch to body reading, accumulate into `m_bodyBuffer` until `m_contentLength` bytes read, call `handleResponse()`, reset state, call `processQueue()`
+- `handleResponse()`: for now, just parse JSON and log it. Will be wired to signals in next step.
+- `fetchStats()`: implement as the first real API method — `sendRequest("GET", "/api/stats", {}, "fetchStats")`. Add basic routing in `handleResponse()` to parse Stats and emit `statsFetched()`.
 
-- [ ] **Step 4: Implement response routing and polling**
+Verify at this point: `onSocketConnected()` calls `fetchStats()`, and the signal fires with real data.
 
-In `daemonclient.cpp`, implement:
-- `handleResponse(statusCode, body, tag)`:
-  - Parse JSON from body
-  - Check for error responses (status >= 400): extract `error` and `code` fields, emit `requestFailed()`
-  - Route by tag string to correct signal with envelope unwrapping per spec table
-  - Action tags (pause/resume/retry/delete): on success, trigger immediate `fetchDownloads()`
+- [ ] **Step 4: Implement response routing for all endpoints**
+
+In `daemonclient.cpp`, flesh out `handleResponse()`:
+- Check for error responses (status >= 400): extract `error` and `code` fields, emit `requestFailed()`
+- Route by tag string to correct signal with envelope unwrapping per spec table
+- Implement `fetchDownloads()`, `fetchConfig()`, `probeUrl()`, `addDownload()`, `updateConfig()` — each calls `sendRequest()` with the right method/path/body/tag
+- Wire response handlers for each: parse envelope, emit typed signal
+
+- [ ] **Step 5: Implement polling and action methods**
+
+In `daemonclient.cpp`, add:
 - `poll()`: if `m_pollInFlight`, return (skip). Otherwise set `m_pollInFlight = true`, call `fetchDownloads()` with tag `"poll"`. Clear flag in the response handler.
-- All public API methods: call `sendRequest()` with appropriate method, path, body, and tag
+- Wire `onSocketConnected()` to start 1s poll timer and trigger initial `fetchDownloads()`
+- Implement action methods: `pauseDownload()`, `resumeDownload()`, `retryDownload()`, `deleteDownload()` — each calls `sendRequest()` with appropriate POST/DELETE
+- Action response handling: on success, trigger immediate `fetchDownloads()`. On failure, emit `requestFailed()`.
 
-- [ ] **Step 5: Add to CMakeLists.txt**
+- [ ] **Step 6: Add to CMakeLists.txt**
 
 Add `src/daemonclient.h` and `src/daemonclient.cpp` to `add_executable`.
 
-- [ ] **Step 6: Verify it builds**
+- [ ] **Step 7: Verify it builds**
 
 Run: `make build-qt`
 Expected: Compiles without errors
 
-- [ ] **Step 7: Smoke-test against running daemon**
+- [ ] **Step 8: Smoke-test against running daemon**
 
-Temporarily add debug output to `main.cpp` — connect to `connected`/`downloadsFetched`/`disconnected` signals and print to qDebug. Run the binary with daemon running. Verify it connects, polls, and prints download counts.
-
-- [ ] **Step 8: Revert smoke-test debug code from main.cpp**
+Run the built binary directly. The DaemonClient constructor auto-connects, so if the daemon is running it should connect without any code changes. Verify by observing:
+- No crash on startup
+- `qDebug` output from DaemonClient (add a few permanent `qDebug() << "connected"` / `qDebug() << "poll: N downloads"` lines in the signal handlers — these are useful long-term for debugging, not temporary)
+- If daemon is not running: verify reconnect timer fires (no crash, just retries silently)
 
 - [ ] **Step 9: Commit**
 
@@ -191,7 +203,7 @@ Implement:
   1. Index incoming downloads by ID
   2. Walk existing rows backwards — remove any whose ID is missing from incoming
   3. Walk existing rows forward — update fields, calculate speed (EMA alpha=0.3), calculate ETA
-  4. Append any incoming downloads not already in the model
+  4. Insert any incoming downloads not already in the model, preserving daemon queue order (insert at the position matching `queueOrder` relative to existing rows, not blindly appending)
   5. Update `m_prevDownloaded` map
   6. First poll after startup: speed stays 0 (no previous sample)
 
@@ -251,7 +263,7 @@ In `mainwindow.cpp`:
 
 In `mainwindow.cpp`:
 - `onSelectionChanged()` → `updateToolbarState()`: iterate selected rows, check download statuses per spec toolbar behavior table, enable/disable Pause/Resume/Retry/Delete
-- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status (client-side), send actions only for valid ones. Track success/failure count across responses. If some fail, show "N of M actions failed" in status bar. Guard: if `!m_client->isConnected()`, show brief error and return.
+- `onPause()`/`onResume()`/`onRetry()`: filter selected downloads by applicable status (client-side). If no selected rows are applicable, do nothing (no-op — don't fire requests). Otherwise send actions only for valid ones. Track success/failure count across responses. If some fail, show "N of M actions failed" in status bar. Guard: if `!m_client->isConnected()`, show brief error and return.
 - `onDelete()`: show custom `QDialog` (not `QMessageBox::question`, which doesn't support checkboxes) with message, "Also delete downloaded file" checkbox (unchecked by default), and OK/Cancel. On OK, call `deleteDownload()` for each selected. Same disconnected guard.
 - `onRequestFailed()`: show brief error message in status bar (auto-clear after 5s)
 
@@ -386,9 +398,14 @@ git commit -m "feat(bolt-qt): add SettingsDialog with config read/write"
 
 - [ ] **Step 1: Update Makefile install target**
 
-Add bolt-qt binary install after bolt-host install:
+Add bolt-qt binary install after bolt-host install. Since Qt6 dev packages may not be installed on all systems, bolt-qt install is conditional — it copies the binary only if it was already built:
 ```makefile
-	@if [ -f bolt-qt/build/bolt-qt ]; then cp bolt-qt/build/bolt-qt ~/.local/bin/; fi
+	@if [ -f bolt-qt/build/bolt-qt ]; then \
+		cp bolt-qt/build/bolt-qt ~/.local/bin/; \
+		echo "Installed bolt-qt"; \
+	else \
+		echo "Note: bolt-qt not built (run 'make build-qt' first, requires Qt6 dev packages)"; \
+	fi
 ```
 
 - [ ] **Step 2: Update CLAUDE.md**
