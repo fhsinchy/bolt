@@ -151,7 +151,7 @@ The existing extension code is deleted and replaced entirely.
 
 ```json
 {
-  "permissions": ["downloads", "contextMenus", "storage", "cookies", "nativeMessaging"],
+  "permissions": ["downloads", "contextMenus", "storage", "cookies", "nativeMessaging", "notifications"],
   "host_permissions": ["<all_urls>"]
 }
 ```
@@ -163,6 +163,7 @@ The existing extension code is deleted and replaced entirely.
 | `storage` | Persist capture toggle and filter settings |
 | `cookies` | Collect cookies for authenticated downloads |
 | `nativeMessaging` | Connect to bolt-host |
+| `notifications` | Success/failure notifications for download handoff |
 | `<all_urls>` | Required for `cookies.getAll()` on arbitrary download URLs |
 
 Intentionally omitted: `webRequest`, `downloads.ui`. No Content-Disposition detection, no download UI suppression in V1.
