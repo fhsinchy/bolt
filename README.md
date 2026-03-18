@@ -58,13 +58,18 @@ cp bolt bolt-host ~/.local/bin/
 cp bolt.service ~/.config/systemd/user/
 sed "s|Exec=bolt|Exec=$HOME/.local/bin/bolt|" bolt.desktop > ~/.local/share/applications/bolt.desktop
 cp icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+
+# Install native messaging manifest for browser integration
+for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do
+  [ -d "$(dirname "$dir")" ] && mkdir -p "$dir" && \
+    sed "s|BOLT_HOST_PATH|$HOME/.local/bin/bolt-host|" com.fhsinchy.bolt.json > "$dir/com.fhsinchy.bolt.json"
+done
+
 gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null || true
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now bolt
 ```
-
-`make install` also installs `bolt-host` (the native messaging bridge) and registers the native messaging manifest for Chrome, Chromium, and Brave.
 
 ## Browser Extension
 
@@ -72,7 +77,7 @@ The Chrome extension in `extensions/chrome/` uses Manifest V3 and communicates w
 
 ## Build from Source
 
-**Prerequisites:** Go 1.23+
+**Prerequisites:** Go 1.25+
 
 ```bash
 git clone https://github.com/fhsinchy/bolt.git
@@ -110,7 +115,7 @@ Standalone daemon — Unix socket API + download engine. No GUI, no CGO.
 
 | Component | Technology |
 |-----------|------------|
-| Daemon | Go 1.23+, pure static binary (`CGO_ENABLED=0`) |
+| Daemon | Go 1.25+, pure static binary (`CGO_ENABLED=0`) |
 | Database | SQLite via `modernc.org/sqlite` (pure Go) |
 | WebSocket | `nhooyr.io/websocket` |
 | IPC | Unix socket (`$XDG_RUNTIME_DIR/bolt/bolt.sock`) |

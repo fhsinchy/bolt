@@ -42,28 +42,64 @@ function isDownloadLink(url) {
   return DOWNLOAD_EXTENSIONS.has(ext);
 }
 
-// Cache capture state so we can check synchronously in the click handler.
+// Cache settings so we can check synchronously in the click handler.
 // Updated on storage changes and on initial load.
-let captureEnabled = false;
-chrome.storage.local.get({ captureEnabled: false }, (s) => {
-  captureEnabled = s.captureEnabled;
+let cachedSettings = {
+  captureEnabled: false,
+  domainBlocklist: [],
+  extensionWhitelist: [],
+  extensionBlacklist: [],
+};
+
+chrome.storage.local.get(cachedSettings, (s) => {
+  Object.assign(cachedSettings, s);
 });
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.captureEnabled) {
-    captureEnabled = changes.captureEnabled.newValue;
+  for (const key of Object.keys(cachedSettings)) {
+    if (changes[key]) {
+      cachedSettings[key] = changes[key].newValue;
+    }
   }
 });
+
+function passesDomainFilter(url) {
+  if (cachedSettings.domainBlocklist.length === 0) return true;
+  try {
+    const domain = new URL(url).hostname;
+    return !cachedSettings.domainBlocklist.some((d) => {
+      const blocked = d.trim();
+      return domain === blocked || domain.endsWith("." + blocked);
+    });
+  } catch {
+    return true;
+  }
+}
+
+function passesExtensionFilter(url) {
+  const ext = getExtension(url);
+  if (cachedSettings.extensionWhitelist.length > 0) {
+    if (!cachedSettings.extensionWhitelist.some((e) => e.trim() === ext)) return false;
+  }
+  if (cachedSettings.extensionBlacklist.length > 0) {
+    if (cachedSettings.extensionBlacklist.some((e) => e.trim() === ext)) return false;
+  }
+  return true;
+}
 
 document.addEventListener("click", (e) => {
   // Only intercept left clicks without modifiers
   if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
-  if (!captureEnabled) return;
+  if (!cachedSettings.captureEnabled) return;
 
   const link = e.target.closest("a[href]");
   if (!link) return;
 
   const url = link.href;
   if (!isDownloadLink(url)) return;
+
+  // Check filters synchronously before preventing default — if filtered,
+  // let the browser handle the click normally.
+  if (!passesDomainFilter(url) || !passesExtensionFilter(url)) return;
 
   // preventDefault must be synchronous — no awaits before this point.
   e.preventDefault();

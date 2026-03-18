@@ -55,8 +55,8 @@ Cookies are serialized by the extension into a single `Cookie` header string wit
 **Response envelope:**
 ```json
 {"id": "1", "command": "ping", "success": true, "data": {"version": "0.4.0", "active_count": 2}}
-{"id": "2", "command": "add_download", "success": true, "data": {"id": "01ABC...", "filename": "file.iso"}}
-{"id": "2", "command": "add_download", "success": false, "error": "duplicate_filename", "data": {"existing_id": "01XYZ..."}}
+{"id": "2", "command": "add_download", "success": true, "data": {"download": {"id": "01ABC...", "filename": "file.iso", "status": "queued"}}}
+{"id": "2", "command": "add_download", "success": false, "error": "duplicate_filename", "data": {"error": "file already exists", "code": "DUPLICATE_FILENAME"}}
 ```
 
 Every response includes the `id` echoed from the request, the originating `command` name, a `success` boolean, and either `data` (on success) or `error` plus optional `data` (on failure).

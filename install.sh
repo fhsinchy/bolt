@@ -52,6 +52,10 @@ uninstall() {
     fi
 
     rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+    rm -f "${INSTALL_DIR}/bolt-host"
+    rm -f "${HOME}/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.json"
+    rm -f "${HOME}/.config/chromium/NativeMessagingHosts/com.fhsinchy.bolt.json"
+    rm -f "${HOME}/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/com.fhsinchy.bolt.json"
     rm -f "${HOME}/.config/systemd/user/bolt.service"
     rm -f "${DESKTOP_DIR}/bolt.desktop"
     rm -f "${ICON_DIR}/bolt.png"
@@ -160,10 +164,28 @@ main() {
     tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
     extracted="${tmpdir}/bolt-linux-${arch}"
 
-    # Install binary
+    # Install binaries
     mkdir -p "$INSTALL_DIR"
     install -m 755 "${extracted}/bolt" "${INSTALL_DIR}/${BINARY_NAME}"
     info "Installed binary to ${INSTALL_DIR}/${BINARY_NAME}"
+    if [ -f "${extracted}/bolt-host" ]; then
+        install -m 755 "${extracted}/bolt-host" "${INSTALL_DIR}/bolt-host"
+        info "Installed bolt-host to ${INSTALL_DIR}/bolt-host"
+    fi
+
+    # Install native messaging manifest for Chrome/Chromium/Brave
+    if [ -f "${extracted}/com.fhsinchy.bolt.json" ]; then
+        for dir in "${HOME}/.config/google-chrome/NativeMessagingHosts" \
+                   "${HOME}/.config/chromium/NativeMessagingHosts" \
+                   "${HOME}/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"; do
+            if [ -d "$(dirname "$dir")" ]; then
+                mkdir -p "$dir"
+                sed "s|BOLT_HOST_PATH|${INSTALL_DIR}/bolt-host|" \
+                    "${extracted}/com.fhsinchy.bolt.json" > "${dir}/com.fhsinchy.bolt.json"
+            fi
+        done
+        info "Installed native messaging manifest"
+    fi
 
     # Install desktop entry (substitute absolute path for Exec)
     mkdir -p "$DESKTOP_DIR"

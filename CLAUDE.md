@@ -5,7 +5,7 @@ Fast, segmented download manager daemon for **Linux**.
 ## Project Info
 
 - **Module:** `github.com/fhsinchy/bolt`
-- **Go version:** 1.23+
+- **Go version:** 1.25+
 - **Author:** github.com/fhsinchy
 - **SQLite driver:** `modernc.org/sqlite` (pure Go, no CGO)
 - **ULID library:** `github.com/oklog/ulid/v2`

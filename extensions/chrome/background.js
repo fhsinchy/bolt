@@ -141,9 +141,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (resp && resp.success) {
     const filename = resp.data?.download?.filename || url.split("/").pop();
     showNotification("Sent to Bolt", filename);
-  } else {
+  } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
+    // Bolt is genuinely unreachable — fall back to browser download
     chrome.downloads.download({ url });
     showNotification("Bolt unavailable", "Downloading normally");
+  } else {
+    // Daemon rejected the request (e.g. duplicate_filename) — surface the error, don't bypass
+    showNotification("Download rejected", resp.error || "Unknown error");
   }
 });
 
@@ -210,14 +214,17 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     },
   });
 
-  if (!resp || !resp.success) {
-    // Fallback: re-initiate browser download
+  if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
+    // Bolt is genuinely unreachable — fall back to browser download
     reinitiatedUrls.add(url);
     chrome.downloads.download({ url });
     if (!failureNotified) {
       showNotification("Bolt unavailable", "Downloading normally");
       failureNotified = true;
     }
+  } else if (resp && !resp.success) {
+    // Daemon rejected the request — surface the error, don't bypass
+    showNotification("Download rejected", resp.error || "Unknown error");
   }
 });
 
@@ -246,9 +253,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const filename =
         resp.data?.download?.filename || msg.url.split("/").pop();
       showNotification("Sent to Bolt", filename);
-    } else {
+    } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
       chrome.downloads.download({ url: msg.url });
       showNotification("Bolt unavailable", "Downloading normally");
+    } else {
+      showNotification("Download rejected", resp.error || "Unknown error");
     }
 
     sendResponse({ ok: true });
