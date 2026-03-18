@@ -41,7 +41,7 @@ func TestDaemon_StartAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := New(cfgPath)
+	d, err := New(cfgPath, "test")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestDaemon_InstanceDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d1, err := New(cfgPath)
+	d1, err := New(cfgPath, "test")
 	if err != nil {
 		t.Fatalf("New d1: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestDaemon_InstanceDetection(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Second daemon should fail with instance detection
-	d2, err := New(cfgPath)
+	d2, err := New(cfgPath, "test")
 	if err != nil {
 		t.Fatalf("New d2: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestDaemon_DownloadViaAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := New(cfgPath)
+	d, err := New(cfgPath, "test")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

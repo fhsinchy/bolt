@@ -1840,19 +1840,8 @@ Load the unpacked extension in Chrome:
 3. Click "Load unpacked" and select `extensions/chrome/`
 4. Verify: no manifest errors, extension icon appears, popup opens without console errors
 
-Note: The native messaging manifest (`packaging/com.fhsinchy.bolt.json`) still has `EXTENSION_ID_PLACEHOLDER`. After loading the extension unpacked, Chrome assigns an extension ID. To make native messaging work:
-1. Note the extension ID from `chrome://extensions`
-2. Generate an RSA key for deterministic ID: `openssl genrsa 2048 | openssl rsa -pubout -outform DER | openssl base64 -A`
-3. Add the resulting base64 string as the `"key"` field in `extensions/chrome/manifest.json`
-4. Reload the extension and verify the ID is stable
-5. Replace `EXTENSION_ID_PLACEHOLDER` in `packaging/com.fhsinchy.bolt.json` with the actual ID
-6. Run `make install` to install the native messaging manifest
+Note: The extension ID and RSA key have been configured. `manifest.json` includes a `"key"` field for a deterministic ID (`jfhajebjecphbdnocjaiomfegdjneikc`), and `packaging/com.fhsinchy.bolt.json` has the matching `allowed_origins`. Run `make install` to install the native messaging manifest.
 
-This is a one-time setup step. The key and extension ID should be committed once determined.
+- [x] **Step 9: Extension ID configured**
 
-- [ ] **Step 9: Commit extension ID configuration (if resolved)**
-
-```bash
-git add extensions/chrome/manifest.json packaging/com.fhsinchy.bolt.json
-git commit -m "chore: set deterministic extension ID for native messaging"
-```
+Extension ID and native messaging manifest are committed.

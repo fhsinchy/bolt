@@ -149,6 +149,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     showNotification("Sent to Bolt", filename);
   } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
     // Bolt is genuinely unreachable — fall back to browser download
+    reinitiatedUrls.add(url);
     chrome.downloads.download({ url });
     showNotification("Bolt unavailable", "Downloading normally");
   } else {
@@ -257,6 +258,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         resp.data?.download?.filename || msg.url.split("/").pop();
       showNotification("Sent to Bolt", filename);
     } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
+      reinitiatedUrls.add(msg.url);
       chrome.downloads.download({ url: msg.url });
       showNotification("Bolt unavailable", "Downloading normally");
     } else {

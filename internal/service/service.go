@@ -23,6 +23,7 @@ type Service struct {
 	cfgMu   sync.RWMutex
 	cfgPath string
 	clients *ClientHub
+	version string
 }
 
 // New creates a new Service.
@@ -35,6 +36,11 @@ func New(eng *engine.Engine, q *queue.Manager, store *db.Store, cfg *config.Conf
 		cfgPath: cfgPath,
 		clients: NewClientHub(),
 	}
+}
+
+// SetVersion sets the daemon version for stats reporting.
+func (s *Service) SetVersion(v string) {
+	s.version = v
 }
 
 // SetEngine sets the engine (for deferred wiring during daemon startup).
@@ -106,7 +112,7 @@ func (s *Service) GetStats(ctx context.Context) map[string]any {
 		"queued_count":    queued,
 		"completed_count": completed,
 		"total_count":     total,
-		"version":         "0.4.0-dev",
+		"version":         s.version,
 	}
 }
 

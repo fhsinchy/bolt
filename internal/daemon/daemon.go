@@ -33,7 +33,7 @@ type Daemon struct {
 }
 
 // New creates a new Daemon, initialising config, DB, engine, queue, service, and server.
-func New(cfgPath string) (*Daemon, error) {
+func New(cfgPath, version string) (*Daemon, error) {
 	// 1. Load config
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
@@ -53,6 +53,7 @@ func New(cfgPath string) (*Daemon, error) {
 
 	// 3. Create service (to get callbacks before engine)
 	svc := service.New(nil, nil, store, cfg, cfgPath)
+	svc.SetVersion(version)
 	callbacks := svc.EngineCallbacks()
 
 	// 4. Create engine with callbacks

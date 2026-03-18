@@ -36,7 +36,7 @@ func main() {
 }
 
 func startDaemon() {
-	d, err := daemon.New(config.DefaultPath())
+	d, err := daemon.New(config.DefaultPath(), version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

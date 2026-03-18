@@ -50,14 +50,14 @@ Make sure `~/.local/bin` is in your `PATH`.
 Download the latest tarball from [GitHub Releases](https://github.com/fhsinchy/bolt/releases/latest):
 
 ```bash
-tar xzf bolt-*.tar.gz
-cd bolt-*/
+tar xzf bolt-linux-amd64-*.tar.gz
+cd bolt-linux-amd64/
 
 mkdir -p ~/.local/bin ~/.config/systemd/user ~/.local/share/applications ~/.local/share/icons/hicolor/256x256/apps
 cp bolt bolt-host ~/.local/bin/
 cp bolt.service ~/.config/systemd/user/
 sed "s|Exec=bolt|Exec=$HOME/.local/bin/bolt|" bolt.desktop > ~/.local/share/applications/bolt.desktop
-cp icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+cp appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 
 # Install native messaging manifest for browser integration
 for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do
