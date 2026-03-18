@@ -11,13 +11,15 @@ The extension is a thin handoff client. It captures download intent, collects br
 
 **Parent specs:** `docs/PRD.md` (Phase 2), `docs/TRD.md` (Sections 9.3, 17.1-17.5), `docs/chrome-extension-spec.md`
 
+**Deliberate scope reduction from TRD:** The TRD (Sections 9.3, 17.2) describes bolt-host subscribing to the daemon's WebSocket endpoint and multiplexing async events alongside command responses. This spec defers WebSocket event forwarding entirely. V1 bolt-host is request/response only. The `connectNative` transport supports adding event streaming later without protocol changes — a future version can add event envelope messages to stdout alongside command responses. This deferral aligns with `docs/chrome-extension-spec.md`, which explicitly defers real-time progress in the extension popup.
+
 ---
 
 ## bolt-host
 
 ### Binary and Module
 
-`cmd/bolt-host/main.go` — a separate Go binary in the same module (`github.com/fhsinchy/bolt`). Imports `internal/model` for shared types (AddRequest, ProbeResult, etc.) but nothing else from the daemon.
+`cmd/bolt-host/main.go` — a separate Go binary in the same module (`github.com/fhsinchy/bolt`). Imports `internal/model` for shared type definitions only. Specifically: `AddRequest`, `ProbeResult`, `Checksum`, `Download`, and status constants. Does not import engine, queue, service, db, or any other daemon package. This is intentional — both binaries share a Go module, so `internal/` is accessible to both `cmd/bolt/` and `cmd/bolt-host/`.
 
 Built with: `CGO_ENABLED=0 go build -o bolt-host ./cmd/bolt-host/`
 
@@ -42,9 +44,11 @@ Chrome's native messaging protocol:
 **Request envelope:**
 ```json
 {"command": "ping"}
-{"command": "add_download", "data": {"url": "...", "headers": {...}, "referer_url": "..."}}
-{"command": "probe", "data": {"url": "...", "headers": {...}}}
+{"command": "add_download", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2", "User-Agent": "...", "Referer": "..."}, "referer_url": "..."}}
+{"command": "probe", "data": {"url": "...", "headers": {"Cookie": "a=1; b=2"}}}
 ```
+
+Cookies are serialized by the extension into a single `Cookie` header string within the `headers` map (e.g., `"name1=value1; name2=value2"`). User-Agent is included in `headers` when needed for compatibility. The `referer_url` field is the page URL for daemon-side storage; the `Referer` header in `headers` is for the actual HTTP request. bolt-host passes the `data` object directly to the daemon's `POST /api/downloads` or `POST /api/probe` endpoint — it does not transform the payload.
 
 **Response envelope:**
 ```json
@@ -54,6 +58,21 @@ Chrome's native messaging protocol:
 ```
 
 Every response includes the originating `command` name, a `success` boolean, and either `data` (on success) or `error` plus optional `data` (on failure).
+
+### Error Mapping
+
+bolt-host translates daemon HTTP responses to the command protocol. The daemon already includes a `code` field in error responses (e.g., `DUPLICATE_FILENAME`, `VALIDATION_ERROR`, `NOT_FOUND`). bolt-host maps these as follows:
+
+- HTTP 2xx → `{"success": true, "data": <response body>}`
+- HTTP 4xx/5xx → `{"success": false, "error": <daemon code field, lowercased>, "data": <daemon response body>}`
+- Connection refused / socket missing → `{"success": false, "error": "daemon_unavailable"}`
+- Request timeout → `{"success": false, "error": "timeout"}`
+
+The `error` field uses the daemon's own error codes (lowercased) so the extension can act on specific errors (e.g., `duplicate_filename`) without bolt-host inventing its own error taxonomy.
+
+### Message Size Limit
+
+Chrome's native messaging protocol has a 1 MB per-message limit. All expected command/response payloads are well under this (typical add_download request is under 2 KB, largest response is a download object at under 4 KB). bolt-host does not need special handling for this limit but should log and return an error if a daemon response exceeds 1 MB.
 
 ### Supported Commands (V1)
 
@@ -91,7 +110,7 @@ Chrome requires a native messaging host manifest to locate bolt-host.
 ```
 
 - `path` must be absolute — `make install` generates it with `$(HOME)`
-- `allowed_origins` uses the extension ID derived from the `key` field in `manifest.json` (deterministic for unpacked development builds)
+- `allowed_origins` requires the extension's Chrome Web Store ID. For development, `manifest.json` includes a `key` field (a public RSA key) that makes the extension ID deterministic across unpacked loads. The corresponding extension ID is hardcoded in `make install` for manifest generation. When published to the Chrome Web Store, the store assigns the real ID and the manifest must be updated accordingly.
 - `make install` installs manifests to both Chrome and Chromium paths if their config directories exist
 
 ### Makefile Changes
@@ -185,6 +204,8 @@ Responsibilities:
 - Listen for clicks on `<a>` tags with href matching download file extensions
 - `preventDefault()` and send message to background service worker
 - Only active when capture is enabled
+
+**File extension matching:** The content script uses a hardcoded list of common downloadable file extensions (e.g., `.zip`, `.tar.gz`, `.iso`, `.deb`, `.rpm`, `.exe`, `.msi`, `.dmg`, `.pdf`, `.7z`, `.rar`, `.AppImage`). This list is separate from the popup's whitelist/blacklist filters — those filters are applied by the background service worker on the `downloads.onCreated` path. The content script list is deliberately broad and static; it exists only to identify links that are likely downloads rather than navigation. Web resource extensions (`.html`, `.js`, `.css`, `.json`, `.xml`) and image extensions are excluded.
 
 ### Download Interception Flows
 
