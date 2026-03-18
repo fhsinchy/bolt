@@ -24,7 +24,20 @@ function ensurePort() {
 function _initPort() {
   return new Promise((resolve) => {
     if (port) {
-      resolve(port);
+      // Port exists but state may be stale — re-ping to refresh.
+      sendCommand({ command: "ping" }).then((resp) => {
+        if (!port) {
+          resolve(null);
+          return;
+        }
+        if (resp && resp.success) {
+          connectionState = "ready";
+          failureNotified = false;
+        } else {
+          connectionState = "daemon_unavailable";
+        }
+        resolve(port);
+      });
       return;
     }
     try {
@@ -214,6 +227,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "download-link") return;
 
   (async () => {
+    // Apply the same filters as automatic capture
+    if (!passesFilters(msg.url, 0, cachedSettings)) {
+      // Filtered out — let the browser handle it normally
+      chrome.downloads.download({ url: msg.url });
+      sendResponse({ ok: true });
+      return;
+    }
+
     const headers = await collectHeaders(msg.url, msg.pageUrl);
 
     const resp = await sendWithConnection({
@@ -248,8 +269,10 @@ function passesFilters(url, totalBytes, settings) {
   if (settings.domainBlocklist.length > 0) {
     try {
       const domain = new URL(url).hostname;
-      if (settings.domainBlocklist.some((d) => domain.endsWith(d.trim())))
-        return false;
+      if (settings.domainBlocklist.some((d) => {
+        const blocked = d.trim();
+        return domain === blocked || domain.endsWith("." + blocked);
+      })) return false;
     } catch {
       /* invalid URL, let it through */
     }

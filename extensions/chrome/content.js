@@ -11,7 +11,7 @@ const DOWNLOAD_EXTENSIONS = new Set([
   ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz",
   ".gz", ".bz2", ".xz", ".7z", ".rar",
   ".iso", ".img",
-  ".deb", ".rpm", ".AppImage", ".flatpak", ".snap",
+  ".deb", ".rpm", ".appimage", ".flatpak", ".snap",
   ".exe", ".msi", ".dmg", ".pkg",
   ".pdf",
   ".bin", ".run", ".sh",

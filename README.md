@@ -54,7 +54,7 @@ tar xzf bolt-*.tar.gz
 cd bolt-*/
 
 mkdir -p ~/.local/bin ~/.config/systemd/user ~/.local/share/applications ~/.local/share/icons/hicolor/256x256/apps
-cp bolt ~/.local/bin/
+cp bolt bolt-host ~/.local/bin/
 cp bolt.service ~/.config/systemd/user/
 sed "s|Exec=bolt|Exec=$HOME/.local/bin/bolt|" bolt.desktop > ~/.local/share/applications/bolt.desktop
 cp icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
@@ -64,9 +64,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now bolt
 ```
 
+`make install` also installs `bolt-host` (the native messaging bridge) and registers the native messaging manifest for Chrome, Chromium, and Brave.
+
 ## Browser Extension
 
-> **Note:** The browser extension is being rewritten to use native messaging (`bolt-host` bridge) in Phase 2. The current extension source in `extensions/chrome/` targets the old loopback HTTP API and does not work with the Unix-socket-only daemon.
+The Chrome extension in `extensions/chrome/` uses Manifest V3 and communicates with the daemon through native messaging via `bolt-host`. Load it as an unpacked extension from `extensions/chrome/` or install it from the Chrome Web Store (when available).
 
 ## Build from Source
 

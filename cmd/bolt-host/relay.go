@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -81,13 +82,21 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "daemon_unavailable"}, nil
+		errCode := "daemon_unavailable"
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			errCode = "timeout"
+		}
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: errCode}, nil
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxMessageSize))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxMessageSize+1))
 	if err != nil {
 		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "read_error"}, nil
+	}
+	if len(respBody) > maxMessageSize {
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "response_too_large"}, nil
 	}
 
 	data := json.RawMessage(respBody)
