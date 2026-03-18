@@ -19,35 +19,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
-
-      - name: Build frontend
-        run: cd frontend && pnpm install && pnpm build
-
       - name: Build binary
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          CGO_ENABLED=1 go build \
-            -tags desktop,production,webkit2_41 \
+          CGO_ENABLED=0 go build \
             -ldflags "-X main.version=$TAG" \
             -o bolt ./cmd/bolt/
-
-      - name: Build extensions
-        run: |
-          cd extensions/chrome && zip -r ../../bolt-capture-chrome.zip . -x ".*"
-          cd ../../extensions/firefox && zip -r ../../bolt-capture-firefox.zip . -x ".*"
 
       - name: Package tarball
         env:
@@ -57,11 +35,10 @@ jobs:
           cp bolt bolt-linux-amd64/
           cp packaging/bolt.desktop bolt-linux-amd64/
           cp packaging/bolt.service bolt-linux-amd64/
-          cp build/appicon.png bolt-linux-amd64/
+          cp images/icon.png bolt-linux-amd64/appicon.png
           tar czf "bolt-linux-amd64-${TAG}.tar.gz" bolt-linux-amd64/
 
       - name: Generate changelog
-        id: changelog
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -89,6 +66,4 @@ jobs:
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file changelog.md \
-            "bolt-linux-amd64-${TAG}.tar.gz" \
-            bolt-capture-chrome.zip \
-            bolt-capture-firefox.zip
+            "bolt-linux-amd64-${TAG}.tar.gz"

@@ -82,39 +82,6 @@ detect_arch() {
     esac
 }
 
-# --- Detect system dependencies ---
-
-check_deps() {
-    missing=""
-
-    if ! pkg-config --exists gtk+-3.0 2>/dev/null; then
-        missing="${missing}  - GTK3 (gtk3-devel / libgtk-3-dev)\n"
-    fi
-
-    if ! pkg-config --exists webkit2gtk-4.1 2>/dev/null && \
-       ! pkg-config --exists webkit2gtk-4.0 2>/dev/null; then
-        missing="${missing}  - WebKit2GTK (webkit2gtk4.1-devel / libwebkit2gtk-4.1-dev)\n"
-    fi
-
-    if [ -n "$missing" ]; then
-        warn "Missing system dependencies (required for the GUI):"
-        printf '%b' "$missing" >&2
-        printf '\n' >&2
-        printf '  Install them with your package manager, e.g.:\n' >&2
-        printf '    Fedora:  sudo dnf install gtk3-devel webkit2gtk4.1-devel\n' >&2
-        printf '    Ubuntu:  sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev\n' >&2
-        printf '    Arch:    sudo pacman -S gtk3 webkit2gtk-4.1\n' >&2
-        printf '\n' >&2
-
-        printf 'Continue anyway? [y/N] '
-        read -r reply
-        case "$reply" in
-            y|Y|yes|YES) ;;
-            *) exit 1 ;;
-        esac
-    fi
-}
-
 # --- Fetch latest release tag ---
 
 get_latest_version() {
@@ -164,8 +131,6 @@ main() {
         error "need 'curl' or 'wget' to download"
     fi
     need_cmd tar
-
-    check_deps
 
     # Detect arch
     arch="$(detect_arch)"
@@ -245,10 +210,11 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-ExecStart=%h/.local/bin/bolt --minimized
+Type=notify
+ExecStart=%h/.local/bin/bolt
 Restart=on-failure
 RestartSec=5
+NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target

@@ -40,7 +40,6 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	cfg := config.DefaultConfig()
 	cfg.DownloadDir = tmp
-	cfg.AuthToken = "test-token-0123456789abcdef"
 	cfg.Notifications = false
 
 	cfgPath := filepath.Join(tmp, "config.json")
@@ -84,43 +83,16 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 }
 
-func (te *testEnv) doRequest(method, path string, body any, token string) *httptest.ResponseRecorder {
+func (te *testEnv) doRequest(method, path string, body any) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
 		json.NewEncoder(&buf).Encode(body)
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 	rr := httptest.NewRecorder()
 	te.handler.ServeHTTP(rr, req)
 	return rr
-}
-
-func TestAuth_MissingToken(t *testing.T) {
-	te := newTestEnv(t)
-	rr := te.doRequest("GET", "/api/stats", nil, "")
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rr.Code)
-	}
-}
-
-func TestAuth_WrongToken(t *testing.T) {
-	te := newTestEnv(t)
-	rr := te.doRequest("GET", "/api/stats", nil, "wrong-token")
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rr.Code)
-	}
-}
-
-func TestAuth_CorrectToken(t *testing.T) {
-	te := newTestEnv(t)
-	rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
 }
 
 func TestAddDownload(t *testing.T) {
@@ -129,7 +101,7 @@ func TestAddDownload(t *testing.T) {
 	body := map[string]string{
 		"url": te.fileServer.URL + "/testfile.bin",
 	}
-	rr := te.doRequest("POST", "/api/downloads", body, te.cfg.AuthToken)
+	rr := te.doRequest("POST", "/api/downloads", body)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -149,7 +121,7 @@ func TestAddDownload_InvalidURL(t *testing.T) {
 	body := map[string]string{
 		"url": "not-a-url",
 	}
-	rr := te.doRequest("POST", "/api/downloads", body, te.cfg.AuthToken)
+	rr := te.doRequest("POST", "/api/downloads", body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -158,7 +130,7 @@ func TestAddDownload_InvalidURL(t *testing.T) {
 func TestListDownloads(t *testing.T) {
 	te := newTestEnv(t)
 
-	rr := te.doRequest("GET", "/api/downloads", nil, te.cfg.AuthToken)
+	rr := te.doRequest("GET", "/api/downloads", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
@@ -176,7 +148,7 @@ func TestListDownloads(t *testing.T) {
 func TestGetDownload_NotFound(t *testing.T) {
 	te := newTestEnv(t)
 
-	rr := te.doRequest("GET", "/api/downloads/nonexistent", nil, te.cfg.AuthToken)
+	rr := te.doRequest("GET", "/api/downloads/nonexistent", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rr.Code)
 	}
@@ -185,7 +157,7 @@ func TestGetDownload_NotFound(t *testing.T) {
 func TestGetStats(t *testing.T) {
 	te := newTestEnv(t)
 
-	rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
+	rr := te.doRequest("GET", "/api/stats", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
@@ -206,7 +178,7 @@ func TestProbe(t *testing.T) {
 	body := map[string]string{
 		"url": te.fileServer.URL + "/testfile.bin",
 	}
-	rr := te.doRequest("POST", "/api/probe", body, te.cfg.AuthToken)
+	rr := te.doRequest("POST", "/api/probe", body)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -225,7 +197,7 @@ func TestPauseDownload(t *testing.T) {
 	addBody := map[string]string{
 		"url": te.fileServer.URL + "/testfile.bin",
 	}
-	addRR := te.doRequest("POST", "/api/downloads", addBody, te.cfg.AuthToken)
+	addRR := te.doRequest("POST", "/api/downloads", addBody)
 	if addRR.Code != http.StatusCreated {
 		t.Fatalf("add: expected 201, got %d: %s", addRR.Code, addRR.Body.String())
 	}
@@ -236,7 +208,7 @@ func TestPauseDownload(t *testing.T) {
 	json.Unmarshal(addRR.Body.Bytes(), &addResp)
 
 	// Pause the queued download.
-	rr := te.doRequest("POST", fmt.Sprintf("/api/downloads/%s/pause", addResp.Download.ID), nil, te.cfg.AuthToken)
+	rr := te.doRequest("POST", fmt.Sprintf("/api/downloads/%s/pause", addResp.Download.ID), nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("pause: expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -248,8 +220,7 @@ func TestWebSocket(t *testing.T) {
 	ts := httptest.NewServer(te.handler)
 	t.Cleanup(ts.Close)
 
-	// Connect to WebSocket with auth token as query param.
-	wsURL := "ws" + ts.URL[4:] + "/ws?token=" + te.cfg.AuthToken
+	wsURL := "ws" + ts.URL[4:] + "/ws"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -272,7 +243,7 @@ func TestWebSocket(t *testing.T) {
 	addBody := map[string]string{
 		"url": te.fileServer.URL + "/ws-test.bin",
 	}
-	addRR := te.doRequest("POST", "/api/downloads", addBody, te.cfg.AuthToken)
+	addRR := te.doRequest("POST", "/api/downloads", addBody)
 	if addRR.Code != http.StatusCreated {
 		t.Fatalf("add: expected 201, got %d: %s", addRR.Code, addRR.Body.String())
 	}
@@ -299,7 +270,7 @@ func TestUpdateConfig_InvalidRollback(t *testing.T) {
 	te := newTestEnv(t)
 
 	// Get the original config value.
-	getRR := te.doRequest("GET", "/api/config", nil, te.cfg.AuthToken)
+	getRR := te.doRequest("GET", "/api/config", nil)
 	if getRR.Code != http.StatusOK {
 		t.Fatalf("get config: expected 200, got %d", getRR.Code)
 	}
@@ -309,13 +280,13 @@ func TestUpdateConfig_InvalidRollback(t *testing.T) {
 
 	// Send invalid config update (default_segments=0 is out of range 1-32).
 	body := map[string]int{"default_segments": 0}
-	rr := te.doRequest("PUT", "/api/config", body, te.cfg.AuthToken)
+	rr := te.doRequest("PUT", "/api/config", body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
 
 	// Verify config was NOT mutated.
-	getRR = te.doRequest("GET", "/api/config", nil, te.cfg.AuthToken)
+	getRR = te.doRequest("GET", "/api/config", nil)
 	if getRR.Code != http.StatusOK {
 		t.Fatalf("get config after rollback: expected 200, got %d", getRR.Code)
 	}
@@ -326,10 +297,23 @@ func TestUpdateConfig_InvalidRollback(t *testing.T) {
 	}
 }
 
+func TestUpdateConfig_RejectsUnknownFields(t *testing.T) {
+	te := newTestEnv(t)
+
+	// Legacy clients may send removed fields like loopback_port or auth_token.
+	// The handler should reject them rather than silently ignoring.
+	rr := te.doRequest("PUT", "/api/config", map[string]any{
+		"loopback_port": 9090,
+	})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown field, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestGetStats_TotalCount(t *testing.T) {
 	te := newTestEnv(t)
 
-	rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
+	rr := te.doRequest("GET", "/api/stats", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
@@ -353,7 +337,7 @@ func TestHandleConcurrentRequests(t *testing.T) {
 	for i := 0; i < goroutines; i++ {
 		go func(n int) {
 			defer wg.Done()
-			rr := te.doRequest("GET", "/api/stats", nil, te.cfg.AuthToken)
+			rr := te.doRequest("GET", "/api/stats", nil)
 			if rr.Code != http.StatusOK {
 				errs <- fmt.Errorf("goroutine %d: expected 200, got %d", n, rr.Code)
 			}

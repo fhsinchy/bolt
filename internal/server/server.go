@@ -42,8 +42,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/probe", s.handleProbe)
 	mux.HandleFunc("GET /ws", s.handleWebSocket)
 
-	// Apply middleware chain: recovery -> logging -> auth
-	return s.recovery(s.logging(s.auth(mux)))
+	// Apply middleware chain: recovery -> logging
+	return s.recovery(s.logging(mux))
 }
 
 // writeJSON writes v as JSON with the given status code.

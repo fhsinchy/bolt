@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
-	"strings"
 	"time"
 )
 
@@ -62,24 +61,3 @@ func (s *Server) logging(next http.Handler) http.Handler {
 	})
 }
 
-// auth checks for a valid Bearer token on REST endpoints or a token query
-// param on WebSocket upgrades.
-func (s *Server) auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var token string
-
-		if r.URL.Path == "/ws" {
-			token = r.URL.Query().Get("token")
-		} else {
-			auth := r.Header.Get("Authorization")
-			token = strings.TrimPrefix(auth, "Bearer ")
-		}
-
-		if token != s.svc.AuthToken() {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "UNAUTHORIZED")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}

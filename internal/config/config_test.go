@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,12 +18,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.GlobalSpeedLimit != 0 {
 		t.Errorf("GlobalSpeedLimit = %d, want 0", cfg.GlobalSpeedLimit)
-	}
-	if cfg.LoopbackPort != 9683 {
-		t.Errorf("LoopbackPort = %d, want 9683", cfg.LoopbackPort)
-	}
-	if len(cfg.AuthToken) != 64 {
-		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
 	}
 	if cfg.Notifications != true {
 		t.Error("Notifications = false, want true")
@@ -64,12 +57,6 @@ func TestLoad_NonexistentCreatesDefaults(t *testing.T) {
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16", cfg.DefaultSegments)
 	}
-	if cfg.LoopbackPort != 9683 {
-		t.Errorf("LoopbackPort = %d, want 9683", cfg.LoopbackPort)
-	}
-	if len(cfg.AuthToken) != 64 {
-		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
-	}
 }
 
 func TestLoad_PartialJSON(t *testing.T) {
@@ -79,7 +66,6 @@ func TestLoad_PartialJSON(t *testing.T) {
 	// Write a partial config: only max_concurrent is set.
 	partial := map[string]any{
 		"max_concurrent": 5,
-		"auth_token":     "abcdef1234567890abcdef1234567890",
 	}
 	data, err := json.Marshal(partial)
 	if err != nil {
@@ -102,9 +88,6 @@ func TestLoad_PartialJSON(t *testing.T) {
 	// Missing fields should fall back to defaults.
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16 (default)", cfg.DefaultSegments)
-	}
-	if cfg.LoopbackPort != 9683 {
-		t.Errorf("LoopbackPort = %d, want 9683 (default)", cfg.LoopbackPort)
 	}
 	if cfg.MinSegmentSize != 1048576 {
 		t.Errorf("MinSegmentSize = %d, want 1048576 (default)", cfg.MinSegmentSize)
@@ -133,10 +116,6 @@ func TestValidate_RejectsOutOfRange(t *testing.T) {
 		{"MaxConcurrent too high", validConfig(func(c *Config) { c.MaxConcurrent = 11 })},
 		{"DefaultSegments too low", validConfig(func(c *Config) { c.DefaultSegments = 0 })},
 		{"DefaultSegments too high", validConfig(func(c *Config) { c.DefaultSegments = 33 })},
-		{"LoopbackPort too low", validConfig(func(c *Config) { c.LoopbackPort = 80 })},
-		{"LoopbackPort too high", validConfig(func(c *Config) { c.LoopbackPort = 70000 })},
-		{"AuthToken empty", validConfig(func(c *Config) { c.AuthToken = "" })},
-		{"AuthToken too short", validConfig(func(c *Config) { c.AuthToken = "short" })},
 		{"MinSegmentSize too small", validConfig(func(c *Config) { c.MinSegmentSize = 100 })},
 		{"MaxRetries negative", validConfig(func(c *Config) { c.MaxRetries = -1 })},
 		{"MaxRetries too high", validConfig(func(c *Config) { c.MaxRetries = 101 })},
@@ -158,7 +137,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	original := DefaultConfig()
 	original.MaxConcurrent = 7
 	original.DefaultSegments = 24
-	original.LoopbackPort = 9090
 	original.MaxRetries = 50
 	original.MinSegmentSize = 131072 // 128KB
 	original.Notifications = false
@@ -179,45 +157,16 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	if loaded.DefaultSegments != original.DefaultSegments {
 		t.Errorf("DefaultSegments = %d, want %d", loaded.DefaultSegments, original.DefaultSegments)
 	}
-	if loaded.LoopbackPort != original.LoopbackPort {
-		t.Errorf("LoopbackPort = %d, want %d", loaded.LoopbackPort, original.LoopbackPort)
-	}
 	if loaded.MaxRetries != original.MaxRetries {
 		t.Errorf("MaxRetries = %d, want %d", loaded.MaxRetries, original.MaxRetries)
 	}
 	if loaded.MinSegmentSize != original.MinSegmentSize {
 		t.Errorf("MinSegmentSize = %d, want %d", loaded.MinSegmentSize, original.MinSegmentSize)
 	}
-	if loaded.AuthToken != original.AuthToken {
-		t.Errorf("AuthToken = %q, want %q", loaded.AuthToken, original.AuthToken)
-	}
 	if loaded.Notifications != original.Notifications {
 		t.Errorf("Notifications = %v, want %v", loaded.Notifications, original.Notifications)
 	}
 	if loaded.GlobalSpeedLimit != original.GlobalSpeedLimit {
 		t.Errorf("GlobalSpeedLimit = %d, want %d", loaded.GlobalSpeedLimit, original.GlobalSpeedLimit)
-	}
-}
-
-func TestGenerateToken(t *testing.T) {
-	token := generateToken()
-
-	if len(token) != 64 {
-		t.Errorf("token length = %d, want 64", len(token))
-	}
-
-	// Must be valid hex.
-	decoded, err := hex.DecodeString(token)
-	if err != nil {
-		t.Fatalf("token is not valid hex: %v", err)
-	}
-	if len(decoded) != 32 {
-		t.Errorf("decoded length = %d, want 32 bytes", len(decoded))
-	}
-
-	// Two calls should produce different tokens.
-	token2 := generateToken()
-	if token == token2 {
-		t.Error("two consecutive generateToken calls returned the same value")
 	}
 }

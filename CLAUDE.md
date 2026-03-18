@@ -17,9 +17,7 @@ Fast, segmented download manager daemon for **Linux**.
 
 Bolt runs as a standalone daemon process. No GUI, no Wails, no CGO.
 
-The daemon owns all download state and exposes a local API over:
-1. **Unix socket** — `$XDG_RUNTIME_DIR/bolt/bolt.sock` (primary, secure)
-2. **Loopback HTTP** — `127.0.0.1:<loopback_port>` (browser extension compatibility)
+The daemon owns all download state and exposes a local API over a **Unix socket** at `$XDG_RUNTIME_DIR/bolt/bolt.sock`. Filesystem permissions are the trust boundary — no auth tokens are needed.
 
 ### Package Layout
 
@@ -49,7 +47,7 @@ internal/
     server.go              Server struct, Handler() returns http.Handler
     handlers.go            REST endpoint handlers
     websocket.go           WebSocket handler (reads from ClientHub)
-    middleware.go           recovery, logging, auth
+    middleware.go           recovery, logging
   config/                  config.json management
   db/                      SQLite data access layer
   model/                   Shared types, ID generation
@@ -80,7 +78,7 @@ The old `internal/event/` pub/sub bus is gone. The engine now takes a `*Callback
 1. Load config → Open DB → Create service (get callbacks) → Create engine → Create queue → Wire service
 2. Instance detection via Unix socket probe
 3. Crash recovery (re-queue stale active downloads)
-4. Serve HTTP on Unix socket + loopback TCP
+4. Serve HTTP on Unix socket
 5. `sd_notify(READY=1)` for systemd
 6. Block until SIGTERM/SIGINT
 7. Graceful shutdown: stop accepting → pause active downloads → persist progress → close DB → remove socket
@@ -98,8 +96,6 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
-make build-extension         # build Chrome extension zip
-make build-extension-chrome  # zip extensions/chrome/ → dist/bolt-capture-chrome.zip
 make install     # build + install binary + systemd unit + .desktop + icon
 make uninstall   # stop + disable + remove binary + unit + .desktop + icon
 make clean       # remove binary, clear test cache
@@ -115,15 +111,13 @@ Located at `~/.config/bolt/config.json`.
 | `max_concurrent` | int | 3 | Max concurrent downloads (1-10) |
 | `default_segments` | int | 16 | Default segment count (1-32) |
 | `global_speed_limit` | int64 | 0 | Bytes/sec, 0 = unlimited |
-| `loopback_port` | int | 9683 | Loopback HTTP port (1024-65535) |
-| `auth_token` | string | (random) | 64-char hex auth token |
 | `notifications` | bool | true | Desktop notifications |
 | `max_retries` | int | 10 | Max retries per segment (0-100) |
 | `min_segment_size` | int64 | 1048576 | Min segment size in bytes (≥64KB) |
 
 ## API
 
-All endpoints require auth. REST: `Authorization: Bearer <token>`. WebSocket: `?token=<token>`.
+All endpoints are served over Unix socket only. No authentication is required — filesystem permissions on the socket are the trust boundary.
 
 | Method | Path | Description |
 |---|---|---|
@@ -138,7 +132,7 @@ All endpoints require auth. REST: `Authorization: Bearer <token>`. WebSocket: `?
 | POST | `/api/downloads/{id}/set-refresh` | Set refresh status |
 | POST | `/api/downloads/{id}/checksum` | Update checksum |
 | PUT | `/api/downloads/reorder` | Reorder queue |
-| GET | `/api/config` | Get config (sans auth token) |
+| GET | `/api/config` | Get config |
 | PUT | `/api/config` | Update config |
 | GET | `/api/stats` | Get stats |
 | POST | `/api/probe` | Probe URL |

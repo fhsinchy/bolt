@@ -28,7 +28,6 @@ import (
 // integrationEnv holds everything needed for a real-server integration test.
 type integrationEnv struct {
 	baseURL    string
-	token      string
 	svc        *service.Service
 	fileServer *httptest.Server
 }
@@ -62,7 +61,6 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 
 	cfg := config.DefaultConfig()
 	cfg.DownloadDir = tmp
-	cfg.AuthToken = "test-token-0123456789abcdef"
 	cfg.Notifications = false
 
 	cfgPath := filepath.Join(tmp, "config.json")
@@ -128,7 +126,6 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 
 	return &integrationEnv{
 		baseURL:    baseURL,
-		token:      cfg.AuthToken,
 		svc:        svc,
 		fileServer: fileServer,
 	}
@@ -152,7 +149,6 @@ func (ie *integrationEnv) doJSON(t *testing.T, method, path string, body any) (i
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+ie.token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -245,25 +241,6 @@ func TestIntegration_AddAndList(t *testing.T) {
 	}
 }
 
-func TestIntegration_Auth401(t *testing.T) {
-	ie := startIntegrationServer(t)
-
-	status, _ := ie.doRaw(t, "GET", "/api/stats", "", map[string]string{
-		"Content-Type": "application/json",
-	})
-	if status != http.StatusUnauthorized {
-		t.Fatalf("missing token: expected 401, got %d", status)
-	}
-
-	status, _ = ie.doRaw(t, "GET", "/api/stats", "", map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer totally-wrong-token-here",
-	})
-	if status != http.StatusUnauthorized {
-		t.Fatalf("wrong token: expected 401, got %d", status)
-	}
-}
-
 func TestIntegration_NotFound(t *testing.T) {
 	ie := startIntegrationServer(t)
 
@@ -280,8 +257,7 @@ func TestIntegration_MalformedJSON(t *testing.T) {
 	ie := startIntegrationServer(t)
 
 	status, resp := ie.doRaw(t, "POST", "/api/downloads", "{bad json", map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + ie.token,
+		"Content-Type": "application/json",
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %v", status, resp)
@@ -318,7 +294,7 @@ func TestIntegration_ProbeEndpoint(t *testing.T) {
 func TestIntegration_WebSocketEvents(t *testing.T) {
 	ie := startIntegrationServer(t)
 
-	wsURL := "ws" + ie.baseURL[4:] + "/ws?token=" + ie.token
+	wsURL := "ws" + ie.baseURL[4:] + "/ws"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

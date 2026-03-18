@@ -182,28 +182,7 @@ func (s *Server) handleUpdateChecksum(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.svc.GetConfig()
-
-	// Expose all fields except auth_token.
-	writeJSON(w, http.StatusOK, struct {
-		DownloadDir      string `json:"download_dir"`
-		MaxConcurrent    int    `json:"max_concurrent"`
-		DefaultSegments  int    `json:"default_segments"`
-		GlobalSpeedLimit int64  `json:"global_speed_limit"`
-		LoopbackPort     int    `json:"loopback_port"`
-		Notifications    bool   `json:"notifications"`
-		MaxRetries       int    `json:"max_retries"`
-		MinSegmentSize   int64  `json:"min_segment_size"`
-	}{
-		DownloadDir:      cfg.DownloadDir,
-		MaxConcurrent:    cfg.MaxConcurrent,
-		DefaultSegments:  cfg.DefaultSegments,
-		GlobalSpeedLimit: cfg.GlobalSpeedLimit,
-		LoopbackPort:     cfg.LoopbackPort,
-		Notifications:    cfg.Notifications,
-		MaxRetries:       cfg.MaxRetries,
-		MinSegmentSize:   cfg.MinSegmentSize,
-	})
+	writeJSON(w, http.StatusOK, s.svc.GetConfig())
 }
 
 func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
@@ -215,16 +194,11 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		MaxRetries       *int    `json:"max_retries"`
 		Notifications    *bool   `json:"notifications"`
 		MinSegmentSize   *int64  `json:"min_segment_size"`
-		LoopbackPort     *int    `json:"loopback_port"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&partial); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&partial); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body", "VALIDATION_ERROR")
-		return
-	}
-
-	// loopback_port cannot be changed at runtime (requires listener restart)
-	if partial.LoopbackPort != nil {
-		writeError(w, http.StatusBadRequest, "loopback_port cannot be changed at runtime; restart the daemon after editing config.json", "VALIDATION_ERROR")
 		return
 	}
 

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>The Linux download manager.</strong> Fast, segmented downloads with a clean GUI, browser integration, and deep desktop integration.
+  <strong>Fast, segmented download manager daemon for Linux.</strong>
 </p>
 
 <p align="center">
@@ -12,10 +12,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/fhsinchy/bolt?link=LICENSE" alt="License" /></a>
 </p>
 
-## Screenshots
-
-![Bolt in dark and light mode](bolt-light-dark.png)
-
 ## Features
 
 - **Segmented downloading** — splits files into up to 32 concurrent connections (default 16)
@@ -23,16 +19,13 @@
 - **Auto-retry** — per-segment exponential backoff for transient failures
 - **Download queue** — configurable max concurrent downloads with FIFO scheduling
 - **Speed limiter** — global rate limiting across all active segments
-- **Queue reordering** — drag and drop to reprioritize pending downloads
-- **Dead link refresh** — automatic URL renewal for expired CDN links
+- **Queue reordering** — reprioritize pending downloads
+- **Dead link refresh** — URL renewal for expired CDN links
 - **Checksum verification** — SHA-256, SHA-512, SHA-1, MD5; verified on completion
-- **Download details** — per-segment progress, URL refresh, checksum editing, full metadata view
-- **Dark theme** — system, light, and dark modes
 - **Desktop notifications** — completion and failure alerts via `notify-send`
-- **Keyboard shortcuts** — Ctrl+N (add), Ctrl+V (paste URL), Delete (remove), Space (pause/resume), Ctrl+A (select all), Ctrl+Q (quit)
-- **Batch URL import** — paste or load a text file of URLs
-- **Browser extensions** — Chrome and Firefox extensions intercept downloads, with configurable filters and domain blocklist
-- **REST API + WebSocket** — full HTTP API for scripting and browser extension integration
+- **REST API + WebSocket** — full HTTP API over Unix socket for scripting and integration
+- **Systemd integration** — Type=notify service with hardened sandboxing
+- **No dependencies** — single static binary, no CGO, no GUI toolkit required
 
 ## Install
 
@@ -73,70 +66,11 @@ systemctl --user enable --now bolt
 
 ## Browser Extension
 
-Bolt ships browser extensions for Chrome and Firefox that intercept downloads and forward them to Bolt.
-
-> Submissions to the Chrome Web Store and Firefox Add-ons (AMO) are in progress. In the meantime, you can install the extensions manually.
-
-**Chrome:**
-
-1. Download `bolt-capture-chrome.zip` from the [latest release](https://github.com/fhsinchy/bolt/releases/latest)
-2. Unzip the file
-3. Open `chrome://extensions` and enable **Developer mode**
-4. Click **Load unpacked** and select the unzipped folder
-
-**Firefox:**
-
-Firefox requires add-ons to be signed by Mozilla. Until the AMO submission is approved, you can load it temporarily:
-
-1. Download `bolt-capture-firefox.zip` from the [latest release](https://github.com/fhsinchy/bolt/releases/latest) and unzip it
-2. Open `about:debugging#/runtime/this-firefox`
-3. Click **Load Temporary Add-on...**
-4. Select any file inside the unzipped folder
-
-> **Note:** Temporary add-ons are removed when Firefox restarts. A signed version will be available on AMO soon.
-
-The extension popup lets you configure the server URL and auth token. On first install, a welcome page walks you through setup.
+> **Note:** The browser extension is being rewritten to use native messaging (`bolt-host` bridge) in Phase 2. The current extension source in `extensions/chrome/` targets the old loopback HTTP API and does not work with the Unix-socket-only daemon.
 
 ## Build from Source
 
-### Prerequisites
-
-**System dependencies:**
-
-Fedora:
-```bash
-sudo dnf install golang gtk3-devel webkit2gtk4.1-devel gcc-c++
-```
-
-Ubuntu / Debian:
-```bash
-sudo apt install golang libgtk-3-dev libwebkit2gtk-4.1-dev build-essential
-```
-
-Arch:
-```bash
-sudo pacman -S go gtk3 webkit2gtk-4.1
-```
-
-**Node.js** (see [nodejs.org/en/download](https://nodejs.org/en/download)):
-```bash
-curl -fsSL https://fnm.vercel.app/install | bash
-fnm use --install-if-missing 20
-```
-
-**pnpm** (see [pnpm.io/installation](https://pnpm.io/installation)):
-```bash
-curl -fsSL https://get.pnpm.io/install.sh | sh -
-```
-
-**Wails CLI:**
-```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-```
-
-Verify your environment with `wails doctor`.
-
-### Build
+**Prerequisites:** Go 1.23+
 
 ```bash
 git clone https://github.com/fhsinchy/bolt.git
@@ -147,45 +81,41 @@ make build
 ### Development
 
 ```bash
-make dev           # hot-reload development
 make test          # run all tests
 make test-race     # run tests with race detector
-make build         # production build
+make build         # production build (CGO_ENABLED=0)
 make install       # build + install locally with systemd service
 make uninstall     # remove everything
 ```
 
 ## Architecture
 
-Single GUI binary — Wails window + HTTP server + download engine.
+Standalone daemon — Unix socket API + download engine. No GUI, no CGO.
 
 ```
-cmd/bolt/           Entry point (GUI launch)
+cmd/bolt/           Entry point (daemon / version / help)
 internal/
+  daemon/           Daemon lifecycle (startup, shutdown, socket, sdnotify)
   engine/           Download engine (segmented downloading, retry, resume)
   queue/            Queue manager (concurrency control)
   server/           HTTP server (REST API + WebSocket)
-  app/              Wails IPC bindings
+  service/          Coordination layer (engine + queue + WebSocket fan-out)
   db/               SQLite data access layer
   config/           Configuration management
-  event/            Event bus (pub/sub)
-  tray/             System tray
   notify/           Desktop notifications
   model/            Shared types
-frontend/           Svelte 5 + TypeScript + Tailwind CSS
-extensions/         Chrome + Firefox browser extensions
+extensions/
+  chrome/           Chrome browser extension (Phase 2 — native messaging rewrite)
 ```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| Backend | Go 1.23+ |
-| GUI | Wails v2 |
-| Frontend | Svelte 5, TypeScript 5, Vite 6, Tailwind CSS 4 |
+| Language | Go 1.23+ |
 | Database | SQLite via `modernc.org/sqlite` (pure Go, no CGO) |
 | WebSocket | `nhooyr.io/websocket` |
-| System tray | `energye/systray` |
+| IPC | Unix socket (`$XDG_RUNTIME_DIR/bolt/bolt.sock`) |
 
 ## License
 

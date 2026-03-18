@@ -1,4 +1,4 @@
-.PHONY: build build-extension build-extension-chrome test test-race test-v test-stress test-cover install uninstall clean
+.PHONY: build test test-race test-v test-stress test-cover install uninstall clean
 
 BINARY = bolt
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -22,12 +22,6 @@ test-stress:
 test-cover:
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
-
-build-extension: build-extension-chrome
-
-build-extension-chrome:
-	mkdir -p dist
-	cd extensions/chrome && zip -r ../../dist/bolt-capture-chrome.zip . -x ".*"
 
 install: build
 	mkdir -p ~/.local/bin

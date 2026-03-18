@@ -124,12 +124,6 @@ func (s *Service) GetConfig() config.Config {
 	return *s.cfg
 }
 
-func (s *Service) AuthToken() string {
-	s.cfgMu.RLock()
-	defer s.cfgMu.RUnlock()
-	return s.cfg.AuthToken
-}
-
 func (s *Service) UpdateConfig(ctx context.Context, apply func(cfg *config.Config)) error {
 	s.cfgMu.Lock()
 	defer s.cfgMu.Unlock()

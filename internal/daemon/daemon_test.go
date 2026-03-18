@@ -25,8 +25,6 @@ func TestDaemon_StartAndShutdown(t *testing.T) {
 	// Create a config that points to our temp dir
 	cfgJSON := fmt.Sprintf(`{
 		"download_dir": %q,
-		"loopback_port": 19683,
-		"auth_token": "test-token-0123456789abcdef",
 		"notifications": false
 	}`, tmp)
 	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0o600); err != nil {
@@ -47,7 +45,6 @@ func TestDaemon_StartAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -71,7 +68,6 @@ func TestDaemon_StartAndShutdown(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest("GET", "http://localhost/api/stats", nil)
-	req.Header.Set("Authorization", "Bearer "+d.cfg.AuthToken)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/stats via unix socket: %v", err)
@@ -89,19 +85,6 @@ func TestDaemon_StartAndShutdown(t *testing.T) {
 	}
 	if _, ok := stats["version"]; !ok {
 		t.Fatal("stats missing 'version' key")
-	}
-
-	// Test: connect via loopback
-	loopbackURL := fmt.Sprintf("http://127.0.0.1:%d/api/stats", d.cfg.LoopbackPort)
-	req2, _ := http.NewRequest("GET", loopbackURL, nil)
-	req2.Header.Set("Authorization", "Bearer "+d.cfg.AuthToken)
-	resp2, err := http.DefaultClient.Do(req2)
-	if err != nil {
-		t.Fatalf("GET /api/stats via loopback: %v", err)
-	}
-	resp2.Body.Close()
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("loopback: expected 200, got %d", resp2.StatusCode)
 	}
 
 	// Shutdown
@@ -128,8 +111,6 @@ func TestDaemon_InstanceDetection(t *testing.T) {
 
 	cfgJSON := fmt.Sprintf(`{
 		"download_dir": %q,
-		"loopback_port": 19684,
-		"auth_token": "test-token-0123456789abcdef",
 		"notifications": false
 	}`, tmp)
 	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0o600); err != nil {
@@ -194,8 +175,6 @@ func TestDaemon_DownloadViaAPI(t *testing.T) {
 	cfgPath := filepath.Join(tmp, "config.json")
 	cfgJSON := fmt.Sprintf(`{
 		"download_dir": %q,
-		"loopback_port": 19685,
-		"auth_token": "test-token-0123456789abcdef",
 		"notifications": false
 	}`, tmp)
 	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0o600); err != nil {
@@ -243,7 +222,7 @@ func TestDaemon_DownloadViaAPI(t *testing.T) {
 	wsCtx, wsCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer wsCancel()
 
-	wsConn, _, err := websocket.Dial(wsCtx, "ws://localhost/ws?token="+d.cfg.AuthToken, &wsDialer)
+	wsConn, _, err := websocket.Dial(wsCtx, "ws://localhost/ws", &wsDialer)
 	if err != nil {
 		t.Fatalf("ws dial: %v", err)
 	}
@@ -252,7 +231,6 @@ func TestDaemon_DownloadViaAPI(t *testing.T) {
 	// Add download
 	addBody := fmt.Sprintf(`{"url": "%s/testfile.bin", "segments": 4}`, fileServer.URL)
 	req, _ := http.NewRequest("POST", "http://localhost/api/downloads", strings.NewReader(addBody))
-	req.Header.Set("Authorization", "Bearer "+d.cfg.AuthToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)

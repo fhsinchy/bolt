@@ -13,16 +13,11 @@ const wsWriteTimeout = 5 * time.Second
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Restrict origins to localhost. Browser extensions connect from
-		// chrome-extension:// or moz-extension:// which are not subject
-		// to CORS origin checks. Permissive origins are not needed and
-		// would widen the attack surface if the auth token leaked.
-		OriginPatterns: []string{
-			"http://localhost:*",
-			"http://127.0.0.1:*",
-			"https://localhost:*",
-			"https://127.0.0.1:*",
-		},
+		// SAFETY: Origin checking is meaningless over Unix socket;
+		// filesystem permissions are the trust boundary. If this
+		// handler is ever served on TCP, origin verification and
+		// authentication must be added back.
+		InsecureSkipVerify: true,
 	})
 	if err != nil {
 		slog.Error("websocket accept", "error", err)

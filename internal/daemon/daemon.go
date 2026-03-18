@@ -28,9 +28,8 @@ type Daemon struct {
 	service *service.Service
 	server  *server.Server
 
-	unixLn     net.Listener
-	loopbackLn net.Listener
-	sockPath   string
+	unixLn   net.Listener
+	sockPath string
 }
 
 // New creates a new Daemon, initialising config, DB, engine, queue, service, and server.
@@ -118,43 +117,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("unix socket: %w", err)
 	}
 
-	// 5. Create loopback TCP listener
-	loopbackAddr := fmt.Sprintf("127.0.0.1:%d", d.cfg.LoopbackPort)
-	d.loopbackLn, err = net.Listen("tcp", loopbackAddr)
-	if err != nil {
-		d.unixLn.Close()
-		removeSocket(d.sockPath)
-		d.store.Close()
-		return fmt.Errorf("loopback listen: %w", err)
-	}
-
-	// 6. Serve HTTP on both listeners
+	// 5. Serve HTTP on Unix socket
 	handler := d.server.Handler()
 
-	newHTTPServer := func() *http.Server {
-		return &http.Server{
-			Handler:      handler,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			IdleTimeout:  60 * time.Second,
-		}
+	unixSrv := &http.Server{
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
-	unixSrv := newHTTPServer()
-	loopbackSrv := newHTTPServer()
 
-	serveFailed := make(chan error, 2)
+	serveFailed := make(chan error, 1)
 	go func() { serveFailed <- unixSrv.Serve(d.unixLn) }()
-	go func() { serveFailed <- loopbackSrv.Serve(d.loopbackLn) }()
 
-	// 7. Notify systemd
+	// 6. Notify systemd
 	sdNotify("READY=1")
 
 	slog.Info("daemon ready",
 		"socket", d.sockPath,
-		"loopback", loopbackAddr,
 	)
 
-	// 8. Block until signal or listener failure
+	// 7. Block until signal or listener failure
 	var serveErr error
 	select {
 	case <-ctx.Done():
@@ -165,23 +148,22 @@ func (d *Daemon) Run(ctx context.Context) error {
 		}
 	}
 
-	// 9. Graceful shutdown
-	d.shutdown(unixSrv, loopbackSrv)
+	// 8. Graceful shutdown
+	d.shutdown(unixSrv)
 
 	return serveErr
 }
 
-func (d *Daemon) shutdown(unixSrv, loopbackSrv *http.Server) {
+func (d *Daemon) shutdown(unixSrv *http.Server) {
 	sdNotify("STOPPING=1")
 
 	slog.Info("shutting down daemon")
 
-	// Close listeners (stops accepting new connections)
+	// Close listener (stops accepting new connections)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	_ = unixSrv.Shutdown(shutdownCtx)
-	_ = loopbackSrv.Shutdown(shutdownCtx)
 
 	// Shutdown engine (pauses active downloads, persists progress)
 	if err := d.engine.Shutdown(shutdownCtx); err != nil {
