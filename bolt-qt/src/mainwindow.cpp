@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "adddownloaddialog.h"
+#include "settingsdialog.h"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -259,5 +260,7 @@ void MainWindow::onDelete() {
 }
 
 void MainWindow::onSettings() {
-    // Will be wired to SettingsDialog in Task 6
+    auto *dialog = new SettingsDialog(m_client, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->open();
 }
