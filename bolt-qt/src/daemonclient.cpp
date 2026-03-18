@@ -23,7 +23,9 @@ DaemonClient::DaemonClient(QObject *parent)
     connect(m_pollTimer, &QTimer::timeout, this, &DaemonClient::poll);
     connect(m_reconnectTimer, &QTimer::timeout, this, &DaemonClient::tryConnect);
 
-    tryConnect();
+    // Defer initial connection to the event loop so consumers can
+    // connect to our signals before we potentially emit connected().
+    QTimer::singleShot(0, this, &DaemonClient::tryConnect);
 }
 
 QString DaemonClient::socketPath() {
@@ -37,6 +39,8 @@ void DaemonClient::tryConnect() {
     if (m_socket->state() != QLocalSocket::UnconnectedState)
         return;
     QString path = socketPath();
+    // Ensure we connect to the filesystem socket, not abstract namespace
+    m_socket->setSocketOptions(QLocalSocket::NoOptions);
     m_socket->setServerName(path);
     m_socket->connectToServer(QIODevice::ReadWrite);
 }

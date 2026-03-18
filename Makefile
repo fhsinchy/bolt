@@ -46,7 +46,7 @@ install: build build-host
 	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/
 	mkdir -p ~/.local/share/applications
-	sed 's|Exec=bolt|Exec=$(HOME)/.local/bin/bolt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
+	sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
 	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
 	cp images/icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
