@@ -1,0 +1,284 @@
+# bolt-qt GUI Design Spec
+
+**Goal:** Qt6 desktop GUI for the Bolt download manager daemon. Thin client — all state lives in the daemon. Communicates via REST + WebSocket over Unix socket.
+
+**Scope (V1):**
+- Download list with progress, speed, ETA
+- Add URL dialog with probing
+- Pause/Resume/Retry/Delete controls
+- Queue management (max concurrent)
+- Speed limiter (global and per-download)
+- Settings dialog
+- System tray icon (minimize to tray)
+- Native system theme (no custom styling)
+
+**Out of scope (V1):** Download categories/folders, download-complete dialog, drag-and-drop queue reorder, tray icon badges/overlays.
+
+---
+
+## Architecture
+
+bolt-qt is a standalone C++17/Qt6 binary. It is a thin client — the daemon owns all download state. The GUI never touches files, SQLite, or download logic.
+
+### Components
+
+```
+bolt-qt/src/
+  main.cpp                 Entry point, QApplication setup
+  types.h                  Download, ProbeResult, Config, Stats structs + JSON parsing
+  daemonclient.h/.cpp      DaemonClient class
+  downloadlistmodel.h/.cpp DownloadListModel class
+  progressdelegate.h/.cpp  QStyledItemDelegate for progress bar column
+  mainwindow.h/.cpp        MainWindow class
+  adddownloaddialog.h/.cpp AddDownloadDialog class
+  settingsdialog.h/.cpp    SettingsDialog class
+  trayicon.h/.cpp          TrayIcon class
+```
+
+### Data Flow
+
+1. `DaemonClient` connects to the daemon's Unix socket, sends HTTP requests, receives JSON responses
+2. On connect, it fetches `GET /api/downloads` to populate the model, then opens a WebSocket for live updates
+3. `DownloadListModel` holds a `QVector<Download>` — REST responses replace entries, WebSocket progress updates patch them in-place
+4. UI actions (pause, resume, etc.) call `DaemonClient` methods which fire HTTP requests; responses update the model
+5. On disconnect, the model stays populated (stale but visible), status bar shows "Disconnected", client retries every 3 seconds
+
+### Connection to Daemon
+
+Two `QLocalSocket` instances:
+- **REST socket:** serialized HTTP/1.1 requests, one at a time, queued internally
+- **WebSocket socket:** persistent connection to `GET /ws` for real-time events
+
+Socket path: `$XDG_RUNTIME_DIR/bolt/bolt.sock`, fallback `/tmp/bolt-<uid>/bolt.sock`.
+
+No shared code with the Go daemon. Types are redefined in C++ structs. JSON parsing uses `QJsonDocument`.
+
+---
+
+## DaemonClient
+
+Central communication layer. Owns both sockets, speaks HTTP/1.1, emits signals for all responses.
+
+### Connection Lifecycle
+
+- On construction, starts a connect attempt to the daemon socket
+- On success: emits `connected()`, fetches stats via `GET /api/stats` to confirm daemon is alive, then upgrades a second connection for WebSocket at `GET /ws`
+- On disconnect: emits `disconnected()`, starts a `QTimer` that retries every 3 seconds
+
+### API
+
+```cpp
+// Request methods — all async, emit signals with results
+void fetchDownloads();
+void fetchDownload(QString id);
+void addDownload(AddRequest req);
+void deleteDownload(QString id, bool deleteFile);
+void pauseDownload(QString id);
+void resumeDownload(QString id);
+void retryDownload(QString id);
+void probeUrl(QString url, QMap<QString,QString> headers);
+void fetchConfig();
+void updateConfig(QJsonObject partial);
+void fetchStats();
+
+// Response signals
+signals:
+    void connected();
+    void disconnected();
+    void downloadsFetched(QVector<Download> list);
+    void downloadFetched(Download dl);
+    void downloadAdded(Download dl);
+    void probeResult(ProbeResult result);
+    void configFetched(Config cfg);
+    void statsFetched(Stats stats);
+    void requestFailed(QString endpoint, QString error);
+
+    // WebSocket events
+    void progressUpdated(QString id, qint64 downloaded, qint64 total, qint64 speed, int eta);
+    void downloadCompleted(QString id);
+    void downloadFailed(QString id, QString error);
+    void downloadPaused(QString id);
+    void downloadResumed(QString id);
+    void downloadRemoved(QString id);
+```
+
+### HTTP over Unix Socket
+
+Simple line-based HTTP/1.1: write request line + headers + body, read status line + headers + body. `Content-Length` based (no chunked transfer). One request at a time on the REST socket, queued internally.
+
+---
+
+## DownloadListModel
+
+`QAbstractTableModel` with these columns:
+
+| Column | Data | Notes |
+|--------|------|-------|
+| Filename | `download.filename` | Elided if too long |
+| Size | `download.totalSize` | Formatted: "1.5 GB" |
+| Progress | `download.downloaded / totalSize` | Rendered as progress bar via delegate |
+| Speed | From WebSocket updates | "10.5 MB/s" or blank if not active |
+| ETA | From WebSocket updates | "2h30m" or blank |
+| Status | `download.status` | Text: Queued, Downloading, Paused, Complete, Error |
+
+### Update Strategy
+
+- `downloadsFetched` signal: full replace of internal `QVector<Download>`
+- `progressUpdated` signal: find by ID, patch `downloaded`/`speed`/`eta` fields, emit `dataChanged` for that row
+- `downloadCompleted`/`downloadFailed`/`downloadPaused`/`downloadResumed`: update status field
+- `downloadRemoved`: `beginRemoveRows`/`endRemoveRows`
+- New download added (WebSocket `added` event): `beginInsertRows`/`endInsertRows`
+
+### Progress Delegate
+
+A `QStyledItemDelegate` for the Progress column that draws a native `QProgressBar` style via `QStyle::drawControl(CE_ProgressBar, ...)`. No custom painting.
+
+### Selection
+
+Standard `QTableView` with single/multi-row selection. Selected rows drive toolbar button state.
+
+---
+
+## MainWindow
+
+Classic download manager layout: toolbar at top, table view filling the center, status bar at bottom.
+
+### Toolbar
+
+| Button | Icon (freedesktop) | Action | Enabled when |
+|--------|-------------------|--------|-------------|
+| Add URL | `list-add` | Opens AddDownloadDialog | Always |
+| Pause | `media-playback-pause` | `pauseDownload()` on selected | Selection has active downloads |
+| Resume | `media-playback-start` | `resumeDownload()` on selected | Selection has paused downloads |
+| Retry | `view-refresh` | `retryDownload()` on selected | Selection has failed downloads |
+| Delete | `edit-delete` | `deleteDownload()` with confirmation | Any selection |
+| Settings | `configure` | Opens SettingsDialog | Always |
+
+Icons use `QIcon::fromTheme()` for native system theme integration.
+
+### Status Bar
+
+Left to right:
+- Connection indicator (green/red dot with "Connected"/"Disconnected" text)
+- Active download count: "3 active"
+- Global speed: "25.4 MB/s" (sum of all active speeds from WebSocket updates)
+
+### Window Behavior
+
+- Close button hides to tray (`hide()` + `event->ignore()`)
+- Window geometry saved/restored via `QSettings`
+- Title: "Bolt Download Manager"
+
+---
+
+## AddDownloadDialog
+
+### Layout
+
+```
+URL:  [_________________________________] [Probe]
+
+-- Probe Results --
+Filename: [ubuntu-24.04-desktop-amd64.iso ]
+Size:     6.2 GB
+Resumable: Yes
+
+-- Options --
+Save to:    [~/Downloads              ] [Browse]
+Segments:   [16]
+Speed limit: [0       ] MB/s  (0 = unlimited)
+
+                           [Cancel]  [Download]
+```
+
+### Flow
+
+1. User pastes URL, clicks Probe (or auto-probe after debounce)
+2. `DaemonClient::probeUrl()` fires, dialog shows spinner
+3. On `probeResult` signal: populate filename, size, resumable indicator
+4. If probe fails: show inline error, user can still proceed
+5. User adjusts options, clicks Download
+6. `DaemonClient::addDownload()` fires
+7. On success: dialog closes
+8. On `duplicate_url` error: show message with option to force-add
+
+### Defaults
+
+Segment count and save directory from daemon config (fetched on dialog open). Speed limit defaults to 0 (unlimited).
+
+### Clipboard Detection
+
+On dialog open, check `QClipboard` for a URL (starts with `http://` or `https://`) and pre-fill the URL field.
+
+---
+
+## SettingsDialog
+
+### Layout
+
+```
+Download directory: [~/Downloads     ] [Browse]
+Max concurrent:     [3  ]  (1-10)
+Default segments:   [16 ]  (1-32)
+Global speed limit: [0       ] MB/s
+Max retries:        [10 ]  (0-100)
+[x] Desktop notifications
+
+                     [Cancel]  [Save]
+```
+
+### Behavior
+
+- On open: `fetchConfig()` populates all fields
+- On Save: diff current vs fetched, send only changed fields via `PUT /api/config`
+- Changes take effect immediately in the daemon
+- Cancel discards without sending
+
+---
+
+## TrayIcon
+
+- `QSystemTrayIcon` with the bolt app icon
+- Left-click: toggle window show/hide
+- Context menu: Show/Hide, Quit
+- `QApplication::setQuitOnLastWindowClosed(false)`
+- Quit only happens from tray menu
+
+No badge/count/speed overlay in V1.
+
+---
+
+## Build System
+
+### CMakeLists.txt
+
+- Qt6 components: `Core Gui Widgets Network WebSockets`
+- C++17 standard
+- All source files in `bolt-qt/src/`
+
+### Entry Point (main.cpp)
+
+1. `QApplication` with `setQuitOnLastWindowClosed(false)`
+2. Single-instance check via `QLockFile` in `$XDG_RUNTIME_DIR/bolt/bolt-qt.lock`
+3. Create `DaemonClient`, `MainWindow`, `TrayIcon`
+4. Show main window, enter event loop
+
+### Makefile Integration
+
+- `make build-qt` runs cmake configure + build
+- `make install` copies `bolt-qt` to `~/.local/bin/`
+- `make build-all` includes `build-qt`
+
+---
+
+## Task Dependency Graph
+
+```
+#13 Build system & entry point ──┐
+                                  ├── #7 DaemonClient
+#10 AddDownloadDialog ───────────┤
+#11 SettingsDialog ──────────────┤
+                                  ├── #8 DownloadListModel ── #9 MainWindow ── #12 TrayIcon
+```
+
+All components depend on DaemonClient (#7). MainWindow depends on DownloadListModel. TrayIcon depends on MainWindow.
