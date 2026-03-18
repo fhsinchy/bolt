@@ -1,0 +1,7 @@
+{
+    "name": "com.fhsinchy.bolt",
+    "description": "Bolt Download Manager bridge",
+    "path": "BOLT_HOST_PATH",
+    "type": "stdio",
+    "allowed_origins": ["chrome-extension://EXTENSION_ID_PLACEHOLDER/"]
+}

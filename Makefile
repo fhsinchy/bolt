@@ -1,4 +1,4 @@
-.PHONY: build test test-race test-v test-stress test-cover install uninstall clean \
+.PHONY: build build-host test test-race test-v test-stress test-cover install uninstall clean \
         build-qt test-qt build-all test-all
 
 # --- Daemon (Go) ---
@@ -9,6 +9,9 @@ LDFLAGS = -X main.version=$(VERSION)
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/bolt/
+
+build-host:
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bolt-host ./cmd/bolt-host/
 
 test:
 	go test ./... -count=1 -timeout 120s
@@ -26,9 +29,21 @@ test-cover:
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
 
-install: build
+install: build build-host
 	mkdir -p ~/.local/bin
 	cp $(BINARY) ~/.local/bin/
+	cp bolt-host ~/.local/bin/
+	@if grep -q 'EXTENSION_ID_PLACEHOLDER' packaging/com.fhsinchy.bolt.json; then \
+		echo "WARNING: Native messaging manifest not installed — EXTENSION_ID_PLACEHOLDER not resolved."; \
+		echo "  See Task 8 in docs/plans/2026-03-18-bolt-host-and-chrome-extension.md for setup."; \
+	else \
+		for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts; do \
+			if [ -d "$$(dirname $$dir)" ]; then \
+				mkdir -p $$dir; \
+				sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
+			fi; \
+		done; \
+	fi
 	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/
 	mkdir -p ~/.local/share/applications
@@ -44,6 +59,9 @@ uninstall:
 	-systemctl --user stop bolt
 	-systemctl --user disable bolt
 	rm -f ~/.local/bin/$(BINARY)
+	rm -f ~/.local/bin/bolt-host
+	rm -f ~/.config/google-chrome/NativeMessagingHosts/com.fhsinchy.bolt.json
+	rm -f ~/.config/chromium/NativeMessagingHosts/com.fhsinchy.bolt.json
 	rm -f ~/.config/systemd/user/bolt.service
 	rm -f ~/.local/share/applications/bolt.desktop
 	rm -f ~/.local/share/icons/hicolor/256x256/apps/bolt.png
@@ -53,6 +71,7 @@ uninstall:
 
 clean:
 	rm -f $(BINARY)
+	rm -f bolt-host
 	rm -rf dist
 	rm -rf bolt-qt/build
 	go clean -testcache
@@ -67,6 +86,6 @@ test-qt:
 
 # --- Meta ---
 
-build-all: build build-qt
+build-all: build build-host build-qt
 
 test-all: test test-qt

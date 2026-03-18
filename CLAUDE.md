@@ -53,6 +53,12 @@ internal/
   model/                   Shared types, ID generation
   notify/                  Desktop notifications (notify-send)
   testutil/                Test helpers (httptest server)
+cmd/bolt-host/
+  main.go                  Chrome native messaging bridge entry point
+  host.go                  Command handler goroutine
+  nativemsg.go             Native messaging read/write (length-prefixed JSON)
+  relay.go                 HTTP relay to daemon Unix socket
+  socketpath.go            Socket path resolution
 bolt-qt/                   C++ Qt6 GUI (planned — not yet buildable)
   CMakeLists.txt           Qt6 project definition
   src/                     Qt source files
@@ -95,13 +101,14 @@ The binary is built with `CGO_ENABLED=0`. The SQLite driver (`modernc.org/sqlite
 
 ```
 make build       # CGO_ENABLED=0 go build → ./bolt
+make build-host  # CGO_ENABLED=0 go build → ./bolt-host
 make test        # run all tests
 make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
 make build-qt    # build Qt GUI (not yet buildable)
-make build-all   # build all components
+make build-all   # build all components (daemon + bolt-host + Qt stub)
 make test-all    # test all components
 make install     # build + install binary + systemd unit + .desktop + icon
 make uninstall   # stop + disable + remove binary + unit + .desktop + icon
