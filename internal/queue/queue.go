@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 )
 
@@ -18,23 +17,23 @@ type PauseFn func(ctx context.Context, id string) error
 // Manager implements a FIFO queue with configurable max concurrent downloads.
 type Manager struct {
 	store         *db.Store
-	bus           *event.Bus
 	maxConcurrent int
 	startFn       StartFunc
 	pauseFn       PauseFn
+	onResumed     func(id string)
 
 	mu     sync.Mutex
 	notify chan struct{}
 }
 
 // New creates a new queue Manager.
-func New(store *db.Store, bus *event.Bus, maxConcurrent int, startFn StartFunc, pauseFn PauseFn) *Manager {
+func New(store *db.Store, maxConcurrent int, startFn StartFunc, pauseFn PauseFn, onResumed func(id string)) *Manager {
 	return &Manager{
 		store:         store,
-		bus:           bus,
 		maxConcurrent: maxConcurrent,
 		startFn:       startFn,
 		pauseFn:       pauseFn,
+		onResumed:     onResumed,
 		notify:        make(chan struct{}, 1),
 	}
 }
@@ -101,7 +100,9 @@ func (m *Manager) EnqueueResume(ctx context.Context, id string) error {
 	if err := m.store.UpdateDownloadStatus(ctx, id, model.StatusQueued, ""); err != nil {
 		return err
 	}
-	m.bus.Publish(event.DownloadResumed{DownloadID: id})
+	if m.onResumed != nil {
+		m.onResumed(id)
+	}
 	m.signal()
 	return nil
 }
@@ -116,7 +117,9 @@ func (m *Manager) EnqueueResumeAll(ctx context.Context) error {
 		if err := m.store.UpdateDownloadStatus(ctx, dl.ID, model.StatusQueued, ""); err != nil {
 			continue
 		}
-		m.bus.Publish(event.DownloadResumed{DownloadID: dl.ID})
+		if m.onResumed != nil {
+			m.onResumed(dl.ID)
+		}
 	}
 	m.signal()
 	return nil

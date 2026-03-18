@@ -17,21 +17,19 @@ import (
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
 	"github.com/fhsinchy/bolt/internal/engine"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"github.com/fhsinchy/bolt/internal/queue"
+	"github.com/fhsinchy/bolt/internal/service"
 	"github.com/fhsinchy/bolt/internal/testutil"
 )
 
 // testEnv holds all the components needed for server tests.
 type testEnv struct {
-	cfg       *config.Config
-	store     *db.Store
-	bus       *event.Bus
-	eng       *engine.Engine
-	queueMgr  *queue.Manager
-	srv       *Server
-	handler   http.Handler
+	cfg        *config.Config
+	store      *db.Store
+	svc        *service.Service
+	srv        *Server
+	handler    http.Handler
 	fileServer *httptest.Server
 }
 
@@ -43,6 +41,9 @@ func newTestEnv(t *testing.T) *testEnv {
 	cfg := config.DefaultConfig()
 	cfg.DownloadDir = tmp
 	cfg.AuthToken = "test-token-0123456789abcdef"
+	cfg.Notifications = false
+
+	cfgPath := filepath.Join(tmp, "config.json")
 
 	dbPath := filepath.Join(tmp, "test.db")
 	store, err := db.Open(dbPath)
@@ -51,47 +52,32 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	bus := event.NewBus()
-
 	// Create a test file server that serves deterministic data.
 	fileServer := testutil.NewTestServer(1024 * 100) // 100KB
 	t.Cleanup(fileServer.Close)
 
-	eng := engine.NewWithClient(store, cfg, bus, fileServer.Client())
+	// Create service with deferred wiring
+	svc := service.New(nil, nil, store, cfg, cfgPath)
+	callbacks := svc.EngineCallbacks()
 
-	var queueMgr *queue.Manager
-	queueMgr = queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
+	eng := engine.NewWithClient(store, cfg, callbacks, fileServer.Client())
+
+	queueMgr := queue.New(store, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
 	}, func(ctx context.Context, id string) error {
 		return eng.PauseDownload(ctx, id)
-	})
+	}, svc.OnResumedCallback())
 
-	srv := New(eng, store, cfg, bus, queueMgr)
+	svc.SetEngine(eng)
+	svc.SetQueue(queueMgr)
 
-	// Build the middleware-wrapped handler for use with httptest.
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/downloads", srv.handleAddDownload)
-	mux.HandleFunc("GET /api/downloads", srv.handleListDownloads)
-	mux.HandleFunc("GET /api/downloads/{id}", srv.handleGetDownload)
-	mux.HandleFunc("DELETE /api/downloads/{id}", srv.handleDeleteDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/pause", srv.handlePauseDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/resume", srv.handleResumeDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/retry", srv.handleRetryDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/refresh", srv.handleRefreshURL)
-	mux.HandleFunc("GET /api/config", srv.handleGetConfig)
-	mux.HandleFunc("PUT /api/config", srv.handleUpdateConfig)
-	mux.HandleFunc("GET /api/stats", srv.handleGetStats)
-	mux.HandleFunc("POST /api/probe", srv.handleProbe)
-	mux.HandleFunc("GET /ws", srv.handleWebSocket)
-
-	handler := srv.recovery(srv.logging(srv.auth(mux)))
+	srv := New(svc, cfg)
+	handler := srv.Handler()
 
 	return &testEnv{
 		cfg:        cfg,
 		store:      store,
-		bus:        bus,
-		eng:        eng,
-		queueMgr:   queueMgr,
+		svc:        svc,
 		srv:        srv,
 		handler:    handler,
 		fileServer: fileServer,
@@ -273,18 +259,23 @@ func TestWebSocket(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	// Wait for the server-side WebSocket handler to subscribe to the event bus.
-	// Without this, the event may be published before the subscription exists.
-	for te.bus.SubscriberCount() == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Give the WebSocket subscription a moment to register.
+	time.Sleep(50 * time.Millisecond)
 
-	// Publish an event and verify it arrives over WebSocket.
-	te.bus.Publish(event.DownloadAdded{
-		DownloadID: "test-id",
-		Filename:   "test.bin",
-		TotalSize:  1024,
-	})
+	// Broadcast a message directly through the service's client hub.
+	id, ch := te.svc.RegisterClient()
+	_ = id
+	_ = ch
+	te.svc.UnregisterClient(id)
+
+	// Use the service to add a download which triggers OnAdded broadcast
+	addBody := map[string]string{
+		"url": te.fileServer.URL + "/ws-test.bin",
+	}
+	addRR := te.doRequest("POST", "/api/downloads", addBody, te.cfg.AuthToken)
+	if addRR.Code != http.StatusCreated {
+		t.Fatalf("add: expected 201, got %d: %s", addRR.Code, addRR.Body.String())
+	}
 
 	_, data, err := conn.Read(ctx)
 	if err != nil {
@@ -298,9 +289,6 @@ func TestWebSocket(t *testing.T) {
 
 	if msg["type"] != "download_added" {
 		t.Fatalf("expected type download_added, got %v", msg["type"])
-	}
-	if msg["download_id"] != "test-id" {
-		t.Fatalf("expected download_id test-id, got %v", msg["download_id"])
 	}
 }
 

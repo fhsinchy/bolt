@@ -15,18 +15,17 @@ import (
 
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"golang.org/x/time/rate"
 )
 
 // Engine orchestrates the full download lifecycle.
 type Engine struct {
-	store   *db.Store
-	cfg     *config.Config
-	bus     *event.Bus
-	client  *http.Client
-	limiter *rate.Limiter
+	store     *db.Store
+	cfg       *config.Config
+	callbacks *Callbacks
+	client    *http.Client
+	limiter   *rate.Limiter
 
 	mu     sync.Mutex
 	active map[string]*activeDownload
@@ -43,26 +42,26 @@ type activeDownload struct {
 }
 
 // New creates a new Engine.
-func New(store *db.Store, cfg *config.Config, bus *event.Bus) *Engine {
+func New(store *db.Store, cfg *config.Config, callbacks *Callbacks) *Engine {
 	e := &Engine{
-		store:  store,
-		cfg:    cfg,
-		bus:    bus,
-		client: newHTTPClient(cfg),
-		active: make(map[string]*activeDownload),
+		store:     store,
+		cfg:       cfg,
+		callbacks: callbacks,
+		client:    newHTTPClient(cfg),
+		active:    make(map[string]*activeDownload),
 	}
 	e.setLimiter(cfg.GlobalSpeedLimit)
 	return e
 }
 
 // NewWithClient creates a new Engine with a custom HTTP client (for testing).
-func NewWithClient(store *db.Store, cfg *config.Config, bus *event.Bus, client *http.Client) *Engine {
+func NewWithClient(store *db.Store, cfg *config.Config, callbacks *Callbacks, client *http.Client) *Engine {
 	e := &Engine{
-		store:  store,
-		cfg:    cfg,
-		bus:    bus,
-		client: client,
-		active: make(map[string]*activeDownload),
+		store:     store,
+		cfg:       cfg,
+		callbacks: callbacks,
+		client:    client,
+		active:    make(map[string]*activeDownload),
 	}
 	e.setLimiter(cfg.GlobalSpeedLimit)
 	return e
@@ -220,11 +219,9 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		return nil, fmt.Errorf("inserting segments: %w", err)
 	}
 
-	e.bus.Publish(event.DownloadAdded{
-		DownloadID: id,
-		Filename:   filename,
-		TotalSize:  probeResult.TotalSize,
-	})
+	if e.callbacks != nil && e.callbacks.OnAdded != nil {
+		e.callbacks.OnAdded(*dl)
+	}
 
 	return dl, nil
 }
@@ -275,7 +272,11 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 	dlCtx, cancel := context.WithCancel(ctx)
 
 	reportCh := make(chan segmentReport, len(segments)*100)
-	agg := newProgressAggregator(dl.ID, dl.TotalSize, segments, reportCh, e.bus, e.store)
+	var onProgress func(string, model.ProgressUpdate)
+	if e.callbacks != nil {
+		onProgress = e.callbacks.OnProgress
+	}
+	agg := newProgressAggregator(dl.ID, dl.TotalSize, segments, reportCh, onProgress, e.store)
 
 	ad := &activeDownload{
 		download:   dl,
@@ -332,21 +333,39 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 				_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusVerifying, "")
 				if err := verifyChecksum(filePath, dl.Checksum); err != nil {
 					_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, err.Error())
-					e.bus.Publish(event.DownloadFailed{DownloadID: dl.ID, Error: err.Error()})
+					if e.callbacks != nil && e.callbacks.OnFailed != nil {
+						refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
+						if refreshed != nil {
+							e.callbacks.OnFailed(dl.ID, *refreshed, err)
+						}
+					}
 				} else {
 					_ = e.store.SetCompleted(context.Background(), dl.ID)
-					e.bus.Publish(event.DownloadCompleted{DownloadID: dl.ID, Filename: dl.Filename})
+					if e.callbacks != nil && e.callbacks.OnCompleted != nil {
+						refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
+						if refreshed != nil {
+							e.callbacks.OnCompleted(dl.ID, *refreshed)
+						}
+					}
 				}
 			} else {
 				_ = e.store.SetCompleted(context.Background(), dl.ID)
-				e.bus.Publish(event.DownloadCompleted{DownloadID: dl.ID, Filename: dl.Filename})
+				if e.callbacks != nil && e.callbacks.OnCompleted != nil {
+					refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
+					if refreshed != nil {
+						e.callbacks.OnCompleted(dl.ID, *refreshed)
+					}
+				}
 			}
 		} else if agg.Err() != nil {
-			_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, agg.Err().Error())
-			e.bus.Publish(event.DownloadFailed{
-				DownloadID: dl.ID,
-				Error:      agg.Err().Error(),
-			})
+			aggErr := agg.Err()
+			_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, aggErr.Error())
+			if e.callbacks != nil && e.callbacks.OnFailed != nil {
+				refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
+				if refreshed != nil {
+					e.callbacks.OnFailed(dl.ID, *refreshed, aggErr)
+				}
+			}
 		}
 
 		e.mu.Lock()
@@ -378,7 +397,9 @@ func (e *Engine) PauseDownload(ctx context.Context, id string) error {
 		if err := e.store.UpdateDownloadStatus(ctx, id, model.StatusPaused, ""); err != nil {
 			return err
 		}
-		e.bus.Publish(event.DownloadPaused{DownloadID: id})
+		if e.callbacks != nil && e.callbacks.OnPaused != nil {
+			e.callbacks.OnPaused(id)
+		}
 		return nil
 	}
 
@@ -399,7 +420,9 @@ func (e *Engine) PauseDownload(ctx context.Context, id string) error {
 	delete(e.active, id)
 	e.mu.Unlock()
 
-	e.bus.Publish(event.DownloadPaused{DownloadID: id})
+	if e.callbacks != nil && e.callbacks.OnPaused != nil {
+		e.callbacks.OnPaused(id)
+	}
 
 	return nil
 }
@@ -423,7 +446,9 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 		return fmt.Errorf("loading segments: %w", err)
 	}
 
-	e.bus.Publish(event.DownloadResumed{DownloadID: id})
+	if e.callbacks != nil && e.callbacks.OnResumed != nil {
+		e.callbacks.OnResumed(id)
+	}
 
 	return e.startDownload(ctx, dl, segments)
 }
@@ -458,7 +483,9 @@ func (e *Engine) CancelDownload(ctx context.Context, id string, deleteFile bool)
 		return err
 	}
 
-	e.bus.Publish(event.DownloadRemoved{DownloadID: id})
+	if e.callbacks != nil && e.callbacks.OnRemoved != nil {
+		e.callbacks.OnRemoved(id)
+	}
 	return nil
 }
 

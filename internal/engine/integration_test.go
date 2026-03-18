@@ -9,7 +9,6 @@ import (
 
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"github.com/fhsinchy/bolt/internal/testutil"
 )
@@ -48,11 +47,9 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 		cfg.MaxRetries = 5
 		cfg.MinSegmentSize = 1024
 
-		bus := event.NewBus()
-		eng := New(store, cfg, bus)
+		tc := newTestCallbacks()
+		eng := New(store, cfg, tc.callbacks)
 		eng.client = ts.Client()
-
-		ch, subID := bus.Subscribe()
 
 		ctx := context.Background()
 		dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -79,22 +76,17 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 		reached := false
 		for !reached {
 			select {
-			case evt := <-ch:
-				if p, ok := evt.(event.Progress); ok && p.DownloadID == dl.ID {
-					if p.Downloaded >= target {
-						reached = true
-					}
-				}
-				if _, ok := evt.(event.DownloadCompleted); ok {
-					// Download finished before we could pause — still valid
+			case p := <-tc.progressCh:
+				if p.Downloaded >= target {
 					reached = true
 				}
+			case <-tc.completedCh:
+				// Download finished before we could pause — still valid
+				reached = true
 			case <-timeout:
 				t.Fatal("timed out waiting for 50% progress")
 			}
 		}
-
-		bus.Unsubscribe(subID)
 
 		// Shutdown (simulating process kill and restart)
 		if err := eng.Shutdown(ctx); err != nil {
@@ -143,12 +135,9 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 		cfg.MaxRetries = 5
 		cfg.MinSegmentSize = 1024
 
-		bus := event.NewBus()
-		eng := New(store, cfg, bus)
+		tc := newTestCallbacks()
+		eng := New(store, cfg, tc.callbacks)
 		eng.client = ts.Client()
-
-		ch, subID := bus.Subscribe()
-		defer bus.Unsubscribe(subID)
 
 		ctx := context.Background()
 
@@ -159,19 +148,12 @@ func TestIntegration_ExitCriteria(t *testing.T) {
 
 		// Wait for completion
 		timeout := time.After(120 * time.Second)
-		completed := false
-		for !completed {
-			select {
-			case evt := <-ch:
-				if c, ok := evt.(event.DownloadCompleted); ok && c.DownloadID == dlID {
-					completed = true
-				}
-				if f, ok := evt.(event.DownloadFailed); ok && f.DownloadID == dlID {
-					t.Fatalf("Download failed after resume: %s", f.Error)
-				}
-			case <-timeout:
-				t.Fatal("timed out waiting for completion after resume")
-			}
+		select {
+		case <-tc.completedCh:
+		case id := <-tc.failedCh:
+			t.Fatalf("Download failed after resume: %s", id)
+		case <-timeout:
+			t.Fatal("timed out waiting for completion after resume")
 		}
 
 		// Verify DB status
@@ -246,12 +228,9 @@ func TestIntegration_MultiSegmentComplete(t *testing.T) {
 	cfg.MaxRetries = 3
 	cfg.MinSegmentSize = 1024
 
-	bus := event.NewBus()
-	eng := New(store, cfg, bus)
+	tc := newTestCallbacks()
+	eng := New(store, cfg, tc.callbacks)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -266,21 +245,13 @@ func TestIntegration_MultiSegmentComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	timeout := time.After(30 * time.Second)
-	for {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				goto done
-			}
-			if f, ok := evt.(event.DownloadFailed); ok {
-				t.Fatalf("download failed: %s", f.Error)
-			}
-		case <-timeout:
-			t.Fatal("timed out")
-		}
+	select {
+	case <-tc.completedCh:
+	case id := <-tc.failedCh:
+		t.Fatalf("download failed: %s", id)
+	case <-time.After(30 * time.Second):
+		t.Fatal("timed out")
 	}
-done:
 
 	// Verify integrity
 	expected := testutil.GenerateData(fileSize)
@@ -321,12 +292,9 @@ func TestIntegration_RetryOnTransientErrors(t *testing.T) {
 	cfg.MaxRetries = 10
 	cfg.MinSegmentSize = 1024
 
-	bus := event.NewBus()
-	eng := New(store, cfg, bus)
+	tc := newTestCallbacks()
+	eng := New(store, cfg, tc.callbacks)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -341,21 +309,13 @@ func TestIntegration_RetryOnTransientErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	timeout := time.After(60 * time.Second)
-	for {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				goto done
-			}
-			if f, ok := evt.(event.DownloadFailed); ok {
-				t.Fatalf("download failed: %s", f.Error)
-			}
-		case <-timeout:
-			t.Fatal("timed out")
-		}
+	select {
+	case <-tc.completedCh:
+	case id := <-tc.failedCh:
+		t.Fatalf("download failed: %s", id)
+	case <-time.After(60 * time.Second):
+		t.Fatal("timed out")
 	}
-done:
 
 	expected := testutil.GenerateData(fileSize)
 	data, err := os.ReadFile(filepath.Join(tmpDir, dl.Filename))

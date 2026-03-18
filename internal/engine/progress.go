@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 )
 
@@ -15,7 +14,7 @@ type progressAggregator struct {
 	totalSize  int64
 	segInfos   []segInfo // immutable start/end info per segment
 	reportCh   <-chan segmentReport
-	bus        *event.Bus
+	onProgress func(string, model.ProgressUpdate)
 	store      *db.Store
 
 	mu              sync.Mutex
@@ -42,7 +41,7 @@ const (
 	speedWindowSize      = 5
 )
 
-func newProgressAggregator(downloadID string, totalSize int64, segments []model.Segment, reportCh <-chan segmentReport, bus *event.Bus, store *db.Store) *progressAggregator {
+func newProgressAggregator(downloadID string, totalSize int64, segments []model.Segment, reportCh <-chan segmentReport, onProgress func(string, model.ProgressUpdate), store *db.Store) *progressAggregator {
 	infos := make([]segInfo, len(segments))
 	downloaded := make([]int64, len(segments))
 	done := make([]bool, len(segments))
@@ -65,7 +64,7 @@ func newProgressAggregator(downloadID string, totalSize int64, segments []model.
 		totalSize:       totalSize,
 		segInfos:        infos,
 		reportCh:        reportCh,
-		bus:             bus,
+		onProgress:      onProgress,
 		store:           store,
 		segDownloaded:   downloaded,
 		segDone:         done,
@@ -198,14 +197,15 @@ func (p *progressAggregator) emitProgress(totalDownloaded int64) {
 		status = "completed"
 	}
 
-	p.bus.Publish(event.Progress{
-		DownloadID: p.downloadID,
-		Downloaded: totalDownloaded,
-		TotalSize:  p.totalSize,
-		Speed:      avgSpeed,
-		ETA:        eta,
-		Status:     status,
-	})
+	if p.onProgress != nil {
+		p.onProgress(p.downloadID, model.ProgressUpdate{
+			Downloaded: totalDownloaded,
+			TotalSize:  p.totalSize,
+			Speed:      avgSpeed,
+			ETA:        eta,
+			Status:     model.Status(status),
+		})
+	}
 }
 
 func (p *progressAggregator) persistProgress() {

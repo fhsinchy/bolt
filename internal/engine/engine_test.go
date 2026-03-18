@@ -12,13 +12,46 @@ import (
 
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"github.com/fhsinchy/bolt/internal/queue"
 	"github.com/fhsinchy/bolt/internal/testutil"
 )
 
-func setupEngine(t *testing.T) (*Engine, *db.Store, *event.Bus, string) {
+// testCallbacks creates a Callbacks struct with channels for test synchronization.
+type testCallbacks struct {
+	completedCh chan string
+	failedCh    chan string
+	pausedCh    chan string
+	resumedCh   chan string
+	addedCh     chan model.Download
+	removedCh   chan string
+	progressCh  chan model.ProgressUpdate
+	callbacks   *Callbacks
+}
+
+func newTestCallbacks() *testCallbacks {
+	tc := &testCallbacks{
+		completedCh: make(chan string, 100),
+		failedCh:    make(chan string, 100),
+		pausedCh:    make(chan string, 100),
+		resumedCh:   make(chan string, 100),
+		addedCh:     make(chan model.Download, 100),
+		removedCh:   make(chan string, 100),
+		progressCh:  make(chan model.ProgressUpdate, 1000),
+	}
+	tc.callbacks = &Callbacks{
+		OnCompleted: func(id string, dl model.Download) { tc.completedCh <- id },
+		OnFailed:    func(id string, dl model.Download, err error) { tc.failedCh <- id },
+		OnPaused:    func(id string) { tc.pausedCh <- id },
+		OnResumed:   func(id string) { tc.resumedCh <- id },
+		OnAdded:     func(dl model.Download) { tc.addedCh <- dl },
+		OnRemoved:   func(id string) { tc.removedCh <- id },
+		OnProgress:  func(id string, update model.ProgressUpdate) { tc.progressCh <- update },
+	}
+	return tc
+}
+
+func setupEngine(t *testing.T) (*Engine, *db.Store, *testCallbacks, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
@@ -33,9 +66,9 @@ func setupEngine(t *testing.T) (*Engine, *db.Store, *event.Bus, string) {
 	cfg.MaxRetries = 3
 	cfg.MinSegmentSize = 1024
 
-	bus := event.NewBus()
-	eng := New(store, cfg, bus)
-	return eng, store, bus, tmpDir
+	tc := newTestCallbacks()
+	eng := New(store, cfg, tc.callbacks)
+	return eng, store, tc, tmpDir
 }
 
 func TestEngine_AddAndComplete(t *testing.T) {
@@ -43,11 +76,8 @@ func TestEngine_AddAndComplete(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize)
 	defer ts.Close()
 
-	eng, store, bus, tmpDir := setupEngine(t)
+	eng, store, tc, tmpDir := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -69,17 +99,10 @@ func TestEngine_AddAndComplete(t *testing.T) {
 		t.Fatalf("StartDownload: %v", err)
 	}
 
-	timeout := time.After(15 * time.Second)
-	completed := false
-	for !completed {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				completed = true
-			}
-		case <-timeout:
-			t.Fatal("timed out waiting for completion")
-		}
+	select {
+	case <-tc.completedCh:
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for completion")
 	}
 
 	got, err := store.GetDownload(ctx, dl.ID)
@@ -112,11 +135,8 @@ func TestEngine_PauseAndResume(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize, testutil.WithLatency(50*time.Millisecond))
 	defer ts.Close()
 
-	eng, store, bus, tmpDir := setupEngine(t)
+	eng, store, tc, tmpDir := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -151,17 +171,10 @@ func TestEngine_PauseAndResume(t *testing.T) {
 		t.Fatalf("ResumeDownload: %v", err)
 	}
 
-	timeout := time.After(60 * time.Second)
-	completed := false
-	for !completed {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				completed = true
-			}
-		case <-timeout:
-			t.Fatal("timed out waiting for completion after resume")
-		}
+	select {
+	case <-tc.completedCh:
+	case <-time.After(60 * time.Second):
+		t.Fatal("timed out waiting for completion after resume")
 	}
 
 	filePath := filepath.Join(tmpDir, dl.Filename)
@@ -222,11 +235,8 @@ func TestEngine_SingleConnectionFallback(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize, testutil.WithNoRangeSupport())
 	defer ts.Close()
 
-	eng, _, bus, _ := setupEngine(t)
+	eng, _, tc, _ := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -245,17 +255,10 @@ func TestEngine_SingleConnectionFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	timeout := time.After(10 * time.Second)
-	completed := false
-	for !completed {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				completed = true
-			}
-		case <-timeout:
-			t.Fatal("timed out")
-		}
+	select {
+	case <-tc.completedCh:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out")
 	}
 }
 
@@ -280,8 +283,8 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		cfg.DownloadDir = tmpDir
 		cfg.MaxRetries = 3
 		cfg.MinSegmentSize = 1024
-		bus := event.NewBus()
-		eng := New(store, cfg, bus)
+		tc := newTestCallbacks()
+		eng := New(store, cfg, tc.callbacks)
 		eng.client = ts.Client()
 
 		ctx := context.Background()
@@ -317,7 +320,6 @@ func TestEngine_CrashRecovery(t *testing.T) {
 	}
 
 	// Phase 2: New engine, simulate crash recovery by setting status to active.
-	// Engine.Start() now sets active to queued; a queue manager starts them.
 	{
 		store, err := db.Open(dbPath)
 		if err != nil {
@@ -329,12 +331,9 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		cfg.DownloadDir = tmpDir
 		cfg.MaxRetries = 3
 		cfg.MinSegmentSize = 1024
-		bus := event.NewBus()
-		eng := New(store, cfg, bus)
+		tc := newTestCallbacks()
+		eng := New(store, cfg, tc.callbacks)
 		eng.client = ts.Client()
-
-		ch, subID := bus.Subscribe()
-		defer bus.Unsubscribe(subID)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -343,48 +342,41 @@ func TestEngine_CrashRecovery(t *testing.T) {
 		_ = store.UpdateDownloadStatus(ctx, dlID, model.StatusActive, "")
 
 		// Create queue manager and wire completion events
-		queueMgr := queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
-			return eng.StartDownload(ctx, id)
-		}, func(ctx context.Context, id string) error {
-			return eng.PauseDownload(ctx, id)
-		})
+		queueMgr := queue.New(store, cfg.MaxConcurrent,
+			func(ctx context.Context, id string) error {
+				return eng.StartDownload(ctx, id)
+			},
+			func(ctx context.Context, id string) error {
+				return eng.PauseDownload(ctx, id)
+			},
+			func(id string) {},
+		)
 
 		go queueMgr.Run(ctx)
 
-		// Wire queue completion
-		go func() {
-			for evt := range ch {
-				switch e := evt.(type) {
-				case event.DownloadCompleted:
-					queueMgr.OnDownloadComplete(e.DownloadID)
-				case event.DownloadFailed:
-					queueMgr.OnDownloadComplete(e.DownloadID)
-				case event.DownloadPaused:
-					queueMgr.OnDownloadComplete(e.DownloadID)
-				}
-			}
-		}()
+		// Wire queue completion via callbacks
+		eng.callbacks.OnCompleted = func(id string, dl model.Download) {
+			tc.completedCh <- id
+			queueMgr.OnDownloadComplete(id)
+		}
+		eng.callbacks.OnFailed = func(id string, dl model.Download, err error) {
+			tc.failedCh <- id
+			queueMgr.OnDownloadComplete(id)
+		}
+		eng.callbacks.OnPaused = func(id string) {
+			tc.pausedCh <- id
+			queueMgr.OnDownloadComplete(id)
+		}
 
 		if err := eng.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
 		queueMgr.Enqueue("") // signal queue to evaluate re-queued downloads
 
-		// Subscribe again for completion (first sub is used for queue wiring)
-		ch2, subID2 := bus.Subscribe()
-		defer bus.Unsubscribe(subID2)
-
-		timeout := time.After(60 * time.Second)
-		completed := false
-		for !completed {
-			select {
-			case evt := <-ch2:
-				if _, ok := evt.(event.DownloadCompleted); ok {
-					completed = true
-				}
-			case <-timeout:
-				t.Fatal("timed out waiting for crash recovery completion")
-			}
+		select {
+		case <-tc.completedCh:
+		case <-time.After(60 * time.Second):
+			t.Fatal("timed out waiting for crash recovery completion")
 		}
 
 		// Verify file integrity
@@ -493,8 +485,6 @@ func TestComputeSegments(t *testing.T) {
 }
 
 func TestAddDownload_ZeroContentLength(t *testing.T) {
-	// Server returns Content-Length: 0 with Accept-Ranges: bytes on HEAD.
-	// The engine should fall back to a single segment because TotalSize <= 0.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "0")
 		w.Header().Set("Accept-Ranges", "bytes")
@@ -522,16 +512,13 @@ func TestAddDownload_ZeroContentLength(t *testing.T) {
 func TestAddDownload_RedirectChain(t *testing.T) {
 	const fileSize = 1024 * 10 // 10 KB
 
-	// File server that serves the actual content.
 	fileServer := testutil.NewTestServer(fileSize)
 	defer fileServer.Close()
 
-	// Redirect server that 302-redirects to the file server.
 	redirectServer := testutil.NewRedirectServer(fileServer.URL + "/final.bin")
 	defer redirectServer.Close()
 
 	eng, _, _, _ := setupEngine(t)
-	// Use a plain http.Client so it can reach both httptest servers.
 	eng.client = &http.Client{}
 
 	ctx := context.Background()
@@ -553,11 +540,8 @@ func TestEngine_ProbeRejectedFallback(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize, testutil.WithProbeRejection())
 	defer ts.Close()
 
-	eng, _, bus, _ := setupEngine(t)
+	eng, _, tc, _ := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -579,26 +563,19 @@ func TestEngine_ProbeRejectedFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case evt := <-ch:
-			if _, ok := evt.(event.DownloadCompleted); ok {
-				// Verify file content
-				filePath := filepath.Join(dl.Dir, dl.Filename)
-				got, _ := os.ReadFile(filePath)
-				want := testutil.GenerateData(fileSize)
-				if !bytes.Equal(got, want) {
-					t.Error("downloaded file content mismatch")
-				}
-				return
-			}
-			if e, ok := evt.(event.DownloadFailed); ok {
-				t.Fatal("download failed:", e.Error)
-			}
-		case <-timeout:
-			t.Fatal("timed out waiting for completion")
+	select {
+	case <-tc.completedCh:
+		// Verify file content
+		filePath := filepath.Join(dl.Dir, dl.Filename)
+		got, _ := os.ReadFile(filePath)
+		want := testutil.GenerateData(fileSize)
+		if !bytes.Equal(got, want) {
+			t.Error("downloaded file content mismatch")
 		}
+	case id := <-tc.failedCh:
+		t.Fatal("download failed:", id)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for completion")
 	}
 }
 

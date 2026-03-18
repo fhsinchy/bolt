@@ -1,41 +1,25 @@
-.PHONY: build build-gui build-extension build-extension-chrome build-extension-firefox dev test test-race test-v test-stress test-cover install uninstall clean
+.PHONY: build build-extension build-extension-chrome build-extension-firefox test test-race test-v test-stress test-cover install uninstall clean
 
 BINARY = bolt
-
-# Build tags required by Wails.
-# webkit2_41 is needed on systems with webkit2gtk-4.1 (Fedora 39+, etc.)
-WAILS_TAGS = desktop,production,webkit2_41
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS = -X main.version=$(VERSION)
 
 build:
-	cd frontend && pnpm build
-	CGO_ENABLED=1 go build -tags $(WAILS_TAGS) -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/bolt/
-
-build-gui:
-	wails build -tags webkit2_41
-
-dev:
-	wails dev -tags webkit2_41
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/bolt/
 
 test:
-	@mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 	go test ./... -count=1 -timeout 120s
 
 test-race:
-	@mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 	go test ./... -race -count=1 -timeout 120s
 
 test-v:
-	@mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 	go test ./... -v -count=1 -timeout 120s
 
 test-stress:
-	@mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 	go test -tags=stress ./... -count=1 -timeout 300s
 
 test-cover:
-	@mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
 
@@ -57,7 +41,7 @@ install: build
 	mkdir -p ~/.local/share/applications
 	sed 's|Exec=bolt|Exec=$(HOME)/.local/bin/bolt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
 	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
-	cp build/appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+	cp images/icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
 	-update-desktop-database ~/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
@@ -76,5 +60,5 @@ uninstall:
 
 clean:
 	rm -f $(BINARY)
-	rm -rf frontend/dist dist
+	rm -rf dist
 	go clean -testcache

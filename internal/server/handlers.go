@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/fhsinchy/bolt/internal/config"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 )
 
@@ -17,18 +16,10 @@ func (s *Server) handleAddDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dl, err := s.engine.AddDownload(r.Context(), req)
+	dl, err := s.svc.AddDownload(r.Context(), req)
 	if err != nil {
 		var dupErr *model.DuplicateDownloadError
 		if errors.As(err, &dupErr) {
-			s.bus.Publish(event.WindowShow{})
-			s.bus.Publish(event.DuplicateDetected{
-				ExistingID: dupErr.Existing.ID,
-				Filename:   dupErr.Existing.Filename,
-				Status:     string(dupErr.Existing.Status),
-				NewURL:     dupErr.NewURL,
-				NewHeaders: dupErr.NewHeaders,
-			})
 			writeJSON(w, http.StatusConflict, map[string]any{
 				"code":     "DUPLICATE_FILENAME",
 				"error":    dupErr.Error(),
@@ -40,8 +31,6 @@ func (s *Server) handleAddDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.queue.Enqueue(dl.ID)
-
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"download": dl,
 	})
@@ -50,7 +39,7 @@ func (s *Server) handleAddDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 
-	downloads, err := s.engine.ListDownloads(r.Context(), model.ListFilter{
+	downloads, err := s.svc.ListDownloads(r.Context(), model.ListFilter{
 		Status: status,
 	})
 	if err != nil {
@@ -71,7 +60,7 @@ func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	dl, segments, err := s.engine.GetDownload(r.Context(), id)
+	dl, segments, err := s.svc.GetDownload(r.Context(), id)
 	if err != nil {
 		mapEngineError(w, err)
 		return
@@ -87,7 +76,7 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	deleteFile := r.URL.Query().Get("delete_file") == "true"
 
-	if err := s.engine.CancelDownload(r.Context(), id, deleteFile); err != nil {
+	if err := s.svc.CancelDownload(r.Context(), id, deleteFile); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -100,7 +89,7 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.engine.PauseDownload(r.Context(), id); err != nil {
+	if err := s.svc.PauseDownload(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -113,7 +102,7 @@ func (s *Server) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.queue.EnqueueResume(r.Context(), id); err != nil {
+	if err := s.svc.ResumeDownload(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -126,7 +115,7 @@ func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.queue.EnqueueResume(r.Context(), id); err != nil {
+	if err := s.svc.RetryDownload(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -148,7 +137,7 @@ func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.engine.RefreshURL(r.Context(), id, body.URL, body.Headers); err != nil {
+	if err := s.svc.RefreshURL(r.Context(), id, body.URL, body.Headers); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -161,7 +150,7 @@ func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSetRefresh(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if err := s.engine.SetRefreshStatus(r.Context(), id); err != nil {
+	if err := s.svc.SetRefreshStatus(r.Context(), id); err != nil {
 		mapEngineError(w, err)
 		return
 	}
@@ -171,30 +160,50 @@ func (s *Server) handleSetRefresh(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleUpdateChecksum(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	var body struct {
+		Checksum *model.Checksum `json:"checksum"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body", "VALIDATION_ERROR")
+		return
+	}
+
+	if err := s.svc.UpdateChecksum(r.Context(), id, body.Checksum); err != nil {
+		mapEngineError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "updated",
+	})
+}
+
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	// Return config without the auth token.
+	cfg := s.svc.GetConfig()
+
 	type safeConfig struct {
 		DownloadDir      string `json:"download_dir"`
 		MaxConcurrent    int    `json:"max_concurrent"`
 		DefaultSegments  int    `json:"default_segments"`
 		GlobalSpeedLimit int64  `json:"global_speed_limit"`
-		ServerPort       int    `json:"server_port"`
-		MinimizeToTray   bool   `json:"minimize_to_tray"`
-		Theme            string `json:"theme"`
+		LoopbackPort     int    `json:"loopback_port"`
+		Notifications    bool   `json:"notifications"`
 		MaxRetries       int    `json:"max_retries"`
 		MinSegmentSize   int64  `json:"min_segment_size"`
 	}
 
 	writeJSON(w, http.StatusOK, safeConfig{
-		DownloadDir:      s.cfg.DownloadDir,
-		MaxConcurrent:    s.cfg.MaxConcurrent,
-		DefaultSegments:  s.cfg.DefaultSegments,
-		GlobalSpeedLimit: s.cfg.GlobalSpeedLimit,
-		ServerPort:       s.cfg.ServerPort,
-		MinimizeToTray:   s.cfg.MinimizeToTray,
-		Theme:            s.cfg.Theme,
-		MaxRetries:       s.cfg.MaxRetries,
-		MinSegmentSize:   s.cfg.MinSegmentSize,
+		DownloadDir:      cfg.DownloadDir,
+		MaxConcurrent:    cfg.MaxConcurrent,
+		DefaultSegments:  cfg.DefaultSegments,
+		GlobalSpeedLimit: cfg.GlobalSpeedLimit,
+		LoopbackPort:     cfg.LoopbackPort,
+		Notifications:    cfg.Notifications,
+		MaxRetries:       cfg.MaxRetries,
+		MinSegmentSize:   cfg.MinSegmentSize,
 	})
 }
 
@@ -205,47 +214,43 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		DefaultSegments  *int    `json:"default_segments"`
 		GlobalSpeedLimit *int64  `json:"global_speed_limit"`
 		MaxRetries       *int    `json:"max_retries"`
-		Theme            *string `json:"theme"`
+		Notifications    *bool   `json:"notifications"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&partial); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body", "VALIDATION_ERROR")
 		return
 	}
 
-	if partial.DownloadDir != nil {
-		s.cfg.DownloadDir = *partial.DownloadDir
-	}
-	if partial.MaxConcurrent != nil {
-		s.cfg.MaxConcurrent = *partial.MaxConcurrent
-	}
-	if partial.DefaultSegments != nil {
-		s.cfg.DefaultSegments = *partial.DefaultSegments
-	}
-	if partial.GlobalSpeedLimit != nil {
-		s.cfg.GlobalSpeedLimit = *partial.GlobalSpeedLimit
-	}
-	if partial.MaxRetries != nil {
-		s.cfg.MaxRetries = *partial.MaxRetries
-	}
-	if partial.Theme != nil {
-		s.cfg.Theme = *partial.Theme
-	}
-
-	if err := s.cfg.Validate(); err != nil {
+	err := s.svc.UpdateConfig(r.Context(), func(cfg *config.Config) {
+		if partial.DownloadDir != nil {
+			cfg.DownloadDir = *partial.DownloadDir
+		}
+		if partial.MaxConcurrent != nil {
+			cfg.MaxConcurrent = *partial.MaxConcurrent
+		}
+		if partial.DefaultSegments != nil {
+			cfg.DefaultSegments = *partial.DefaultSegments
+		}
+		if partial.GlobalSpeedLimit != nil {
+			cfg.GlobalSpeedLimit = *partial.GlobalSpeedLimit
+		}
+		if partial.MaxRetries != nil {
+			cfg.MaxRetries = *partial.MaxRetries
+		}
+		if partial.Notifications != nil {
+			cfg.Notifications = *partial.Notifications
+		}
+	})
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR")
 		return
 	}
 
-	if err := s.cfg.Save(config.DefaultPath()); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save config", "INTERNAL_ERROR")
-		return
-	}
-
 	if partial.MaxConcurrent != nil {
-		s.queue.SetMaxConcurrent(*partial.MaxConcurrent)
+		s.svc.SetMaxConcurrent(*partial.MaxConcurrent)
 	}
 	if partial.GlobalSpeedLimit != nil {
-		s.engine.SetSpeedLimit(*partial.GlobalSpeedLimit)
+		s.svc.SetSpeedLimit(*partial.GlobalSpeedLimit)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -254,18 +259,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	active, _ := s.store.CountByStatus(ctx, model.StatusActive)
-	queued, _ := s.store.CountByStatus(ctx, model.StatusQueued)
-	completed, _ := s.store.CountByStatus(ctx, model.StatusCompleted)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"active_count":    active,
-		"queued_count":    queued,
-		"completed_count": completed,
-		"version":         "0.3.0-dev",
-	})
+	writeJSON(w, http.StatusOK, s.svc.GetStats(r.Context()))
 }
 
 func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
@@ -278,18 +272,13 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.engine.ProbeURL(r.Context(), body.URL, body.Headers)
+	result, err := s.svc.ProbeURL(r.Context(), body.URL, body.Headers)
 	if err != nil {
 		mapEngineError(w, err)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, result)
-}
-
-func (s *Server) handleShowWindow(w http.ResponseWriter, r *http.Request) {
-	s.bus.Publish(event.WindowShow{})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleReorderDownloads(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +295,7 @@ func (s *Server) handleReorderDownloads(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := s.store.ReorderDownloads(r.Context(), body.OrderedIDs); err != nil {
+	if err := s.svc.ReorderDownloads(r.Context(), body.OrderedIDs); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
 		return
 	}

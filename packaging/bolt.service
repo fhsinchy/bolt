@@ -4,10 +4,17 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-ExecStart=%h/.local/bin/bolt --minimized
+Type=notify
+ExecStart=%h/.local/bin/bolt
 Restart=on-failure
 RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/bolt %h/.local/share/bolt %h/Downloads
+PrivateTmp=true
 
 [Install]
 WantedBy=default.target

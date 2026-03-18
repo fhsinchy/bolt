@@ -20,17 +20,14 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.GlobalSpeedLimit != 0 {
 		t.Errorf("GlobalSpeedLimit = %d, want 0", cfg.GlobalSpeedLimit)
 	}
-	if cfg.ServerPort != 9683 {
-		t.Errorf("ServerPort = %d, want 9683", cfg.ServerPort)
+	if cfg.LoopbackPort != 9683 {
+		t.Errorf("LoopbackPort = %d, want 9683", cfg.LoopbackPort)
 	}
 	if len(cfg.AuthToken) != 64 {
 		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
 	}
-	if cfg.MinimizeToTray != true {
-		t.Error("MinimizeToTray = false, want true")
-	}
-	if cfg.Theme != "system" {
-		t.Errorf("Theme = %q, want %q", cfg.Theme, "system")
+	if cfg.Notifications != true {
+		t.Error("Notifications = false, want true")
 	}
 	if cfg.MaxRetries != 10 {
 		t.Errorf("MaxRetries = %d, want 10", cfg.MaxRetries)
@@ -67,8 +64,8 @@ func TestLoad_NonexistentCreatesDefaults(t *testing.T) {
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16", cfg.DefaultSegments)
 	}
-	if cfg.ServerPort != 9683 {
-		t.Errorf("ServerPort = %d, want 9683", cfg.ServerPort)
+	if cfg.LoopbackPort != 9683 {
+		t.Errorf("LoopbackPort = %d, want 9683", cfg.LoopbackPort)
 	}
 	if len(cfg.AuthToken) != 64 {
 		t.Errorf("AuthToken length = %d, want 64", len(cfg.AuthToken))
@@ -106,8 +103,8 @@ func TestLoad_PartialJSON(t *testing.T) {
 	if cfg.DefaultSegments != 16 {
 		t.Errorf("DefaultSegments = %d, want 16 (default)", cfg.DefaultSegments)
 	}
-	if cfg.ServerPort != 9683 {
-		t.Errorf("ServerPort = %d, want 9683 (default)", cfg.ServerPort)
+	if cfg.LoopbackPort != 9683 {
+		t.Errorf("LoopbackPort = %d, want 9683 (default)", cfg.LoopbackPort)
 	}
 	if cfg.MinSegmentSize != 1048576 {
 		t.Errorf("MinSegmentSize = %d, want 1048576 (default)", cfg.MinSegmentSize)
@@ -115,8 +112,8 @@ func TestLoad_PartialJSON(t *testing.T) {
 	if cfg.MaxRetries != 10 {
 		t.Errorf("MaxRetries = %d, want 10 (default)", cfg.MaxRetries)
 	}
-	if cfg.Theme != "system" {
-		t.Errorf("Theme = %q, want %q (default)", cfg.Theme, "system")
+	if cfg.Notifications != true {
+		t.Error("Notifications = false, want true (default)")
 	}
 }
 
@@ -136,8 +133,8 @@ func TestValidate_RejectsOutOfRange(t *testing.T) {
 		{"MaxConcurrent too high", validConfig(func(c *Config) { c.MaxConcurrent = 11 })},
 		{"DefaultSegments too low", validConfig(func(c *Config) { c.DefaultSegments = 0 })},
 		{"DefaultSegments too high", validConfig(func(c *Config) { c.DefaultSegments = 33 })},
-		{"ServerPort too low", validConfig(func(c *Config) { c.ServerPort = 80 })},
-		{"ServerPort too high", validConfig(func(c *Config) { c.ServerPort = 70000 })},
+		{"LoopbackPort too low", validConfig(func(c *Config) { c.LoopbackPort = 80 })},
+		{"LoopbackPort too high", validConfig(func(c *Config) { c.LoopbackPort = 70000 })},
 		{"AuthToken empty", validConfig(func(c *Config) { c.AuthToken = "" })},
 		{"AuthToken too short", validConfig(func(c *Config) { c.AuthToken = "short" })},
 		{"MinSegmentSize too small", validConfig(func(c *Config) { c.MinSegmentSize = 100 })},
@@ -161,11 +158,10 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	original := DefaultConfig()
 	original.MaxConcurrent = 7
 	original.DefaultSegments = 24
-	original.ServerPort = 9090
-	original.Theme = "dark"
+	original.LoopbackPort = 9090
 	original.MaxRetries = 50
 	original.MinSegmentSize = 131072 // 128KB
-	original.MinimizeToTray = false
+	original.Notifications = false
 	original.GlobalSpeedLimit = 1048576
 
 	if err := original.Save(path); err != nil {
@@ -183,11 +179,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	if loaded.DefaultSegments != original.DefaultSegments {
 		t.Errorf("DefaultSegments = %d, want %d", loaded.DefaultSegments, original.DefaultSegments)
 	}
-	if loaded.ServerPort != original.ServerPort {
-		t.Errorf("ServerPort = %d, want %d", loaded.ServerPort, original.ServerPort)
-	}
-	if loaded.Theme != original.Theme {
-		t.Errorf("Theme = %q, want %q", loaded.Theme, original.Theme)
+	if loaded.LoopbackPort != original.LoopbackPort {
+		t.Errorf("LoopbackPort = %d, want %d", loaded.LoopbackPort, original.LoopbackPort)
 	}
 	if loaded.MaxRetries != original.MaxRetries {
 		t.Errorf("MaxRetries = %d, want %d", loaded.MaxRetries, original.MaxRetries)
@@ -198,8 +191,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	if loaded.AuthToken != original.AuthToken {
 		t.Errorf("AuthToken = %q, want %q", loaded.AuthToken, original.AuthToken)
 	}
-	if loaded.MinimizeToTray != original.MinimizeToTray {
-		t.Errorf("MinimizeToTray = %v, want %v", loaded.MinimizeToTray, original.MinimizeToTray)
+	if loaded.Notifications != original.Notifications {
+		t.Errorf("Notifications = %v, want %v", loaded.Notifications, original.Notifications)
 	}
 	if loaded.GlobalSpeedLimit != original.GlobalSpeedLimit {
 		t.Errorf("GlobalSpeedLimit = %d, want %d", loaded.GlobalSpeedLimit, original.GlobalSpeedLimit)

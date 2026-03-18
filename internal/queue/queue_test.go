@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 )
 
@@ -59,6 +58,7 @@ func insertDownload(t *testing.T, store *db.Store, id string, order int, status 
 }
 
 func noopPauseFn(ctx context.Context, id string) error { return nil }
+func noopOnResumed(id string)                          {}
 
 // startFnThatSetsActive returns a startFn that sets download status to active
 // (mimicking what engine.StartDownload does) and records started IDs.
@@ -74,12 +74,11 @@ func startFnThatSetsActive(store *db.Store, mu *sync.Mutex, started *[]string) S
 
 func TestQueue_MaxConcurrent(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, bus, 3, startFnThatSetsActive(store, &mu, &started), noopPauseFn)
+	mgr := New(store, 3, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -111,12 +110,11 @@ func TestQueue_MaxConcurrent(t *testing.T) {
 
 func TestQueue_CompleteTriggersNext(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, bus, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -155,7 +153,6 @@ func TestQueue_CompleteTriggersNext(t *testing.T) {
 
 func TestQueue_EmptyQueue(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	called := false
 	startFn := func(ctx context.Context, id string) error {
@@ -163,7 +160,7 @@ func TestQueue_EmptyQueue(t *testing.T) {
 		return nil
 	}
 
-	mgr := New(store, bus, 3, startFn, noopPauseFn)
+	mgr := New(store, 3, startFn, noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -181,12 +178,11 @@ func TestQueue_EmptyQueue(t *testing.T) {
 
 func TestMaxConcurrentChanged_MidFlight(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, bus, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -226,7 +222,6 @@ func TestMaxConcurrentChanged_MidFlight(t *testing.T) {
 
 func TestSetMaxConcurrent_PausesExcess(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	paused := make([]string, 0)
@@ -242,7 +237,7 @@ func TestSetMaxConcurrent_PausesExcess(t *testing.T) {
 		return nil
 	}
 
-	mgr := New(store, bus, 4, startFn, pauseFn)
+	mgr := New(store, 4, startFn, pauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -271,12 +266,11 @@ func TestSetMaxConcurrent_PausesExcess(t *testing.T) {
 
 func TestEnqueueResume_RespectsLimit(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, bus, 1, startFnThatSetsActive(store, &mu, &started), noopPauseFn)
+	mgr := New(store, 1, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -318,12 +312,11 @@ func TestEnqueueResume_RespectsLimit(t *testing.T) {
 
 func TestEnqueueResumeAll(t *testing.T) {
 	store := openTestStore(t)
-	bus := event.NewBus()
 
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, bus, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

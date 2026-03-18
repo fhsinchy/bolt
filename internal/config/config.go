@@ -15,10 +15,9 @@ type Config struct {
 	MaxConcurrent    int    `json:"max_concurrent"`
 	DefaultSegments  int    `json:"default_segments"`
 	GlobalSpeedLimit int64  `json:"global_speed_limit"`
-	ServerPort       int    `json:"server_port"`
+	LoopbackPort     int    `json:"loopback_port"`
 	AuthToken        string `json:"auth_token"`
-	MinimizeToTray   bool   `json:"minimize_to_tray"`
-	Theme            string `json:"theme"`
+	Notifications    bool   `json:"notifications"`
 	MaxRetries       int    `json:"max_retries"`
 	MinSegmentSize   int64  `json:"min_segment_size"`
 }
@@ -47,10 +46,9 @@ func DefaultConfig() *Config {
 		MaxConcurrent:    3,
 		DefaultSegments:  16,
 		GlobalSpeedLimit: 0,
-		ServerPort:       9683,
+		LoopbackPort:     9683,
 		AuthToken:        generateToken(),
-		MinimizeToTray:   true,
-		Theme:            "system",
+		Notifications:    true,
 		MaxRetries:       10,
 		MinSegmentSize:   1048576, // 1 MB
 	}
@@ -99,7 +97,7 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
 
@@ -114,8 +112,8 @@ func (c *Config) Validate() error {
 	if c.DefaultSegments < 1 || c.DefaultSegments > 32 {
 		return fmt.Errorf("default_segments must be between 1 and 32, got %d", c.DefaultSegments)
 	}
-	if c.ServerPort < 1024 || c.ServerPort > 65535 {
-		return fmt.Errorf("server_port must be between 1024 and 65535, got %d", c.ServerPort)
+	if c.LoopbackPort < 1024 || c.LoopbackPort > 65535 {
+		return fmt.Errorf("loopback_port must be between 1024 and 65535, got %d", c.LoopbackPort)
 	}
 	if c.AuthToken == "" || len(c.AuthToken) < 16 {
 		return fmt.Errorf("auth_token must be at least 16 characters, got %d", len(c.AuthToken))

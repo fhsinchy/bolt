@@ -1,6 +1,6 @@
 # Bolt — Download Manager
 
-Fast, segmented download manager for **Linux**.
+Fast, segmented download manager daemon for **Linux**.
 
 ## Project Info
 
@@ -10,161 +10,91 @@ Fast, segmented download manager for **Linux**.
 - **SQLite driver:** `modernc.org/sqlite` (pure Go, no CGO)
 - **ULID library:** `github.com/oklog/ulid/v2`
 - **WebSocket:** `nhooyr.io/websocket`
-- **Wails:** `github.com/wailsapp/wails/v2` (desktop GUI)
-- **System tray:** `github.com/energye/systray`
-- **Frontend:** Svelte 5, TypeScript 5, Vite 6, Tailwind CSS 4, pnpm
 - **Test framework:** stdlib `testing` + `net/http/httptest` (no external test deps)
+- **Build:** `CGO_ENABLED=0` — fully static binary, no CGO required
 
-## TRD Errata
+## Architecture
 
-- TRD §13.4 says Wails v2 has native `options.SystemTray` — this is incorrect. Wails v2 has no system tray API. We use `energye/systray` instead.
-- TRD/PRD specify port 6800, but this conflicts with aria2c's default JSON-RPC port. Changed to 9683.
+Bolt runs as a standalone daemon process. No GUI, no Wails, no CGO.
 
-## Icons & Wayland
+The daemon owns all download state and exposes a local API over:
+1. **Unix socket** — `$XDG_RUNTIME_DIR/bolt/bolt.sock` (primary, secure)
+2. **Loopback HTTP** — `127.0.0.1:<loopback_port>` (browser extension compatibility)
 
-Wails' `linux.Options{Icon: []byte}` calls `gtk_window_set_icon()`, which only works on X11. On Wayland (both GNOME and KDE), compositors ignore GTK window icons and instead match the app ID to a `.desktop` file to look up icons from the icon theme.
+### Package Layout
 
-**How it works:**
-- `linux.Options{ProgramName: "bolt"}` calls `g_set_prgname("bolt")`, which sets the Wayland `app_id` to `"bolt"`
-- The compositor looks for `bolt.desktop` in `~/.local/share/applications/` or `/usr/share/applications/`
-- The `.desktop` file specifies `Icon=bolt`, which resolves to `bolt.png` in the icon theme (e.g. `~/.local/share/icons/hicolor/256x256/apps/bolt.png` or `/usr/share/icons/hicolor/256x256/apps/bolt.png`)
+```
+cmd/bolt/
+  main.go                  Entry point (daemon / version / help)
+internal/
+  daemon/                  Daemon lifecycle (startup, shutdown, socket, sdnotify)
+    daemon.go              Daemon struct, New(), Run(), shutdown()
+    socket.go              Unix socket creation, instance detection
+    sdnotify.go            Pure Go systemd notify (no CGO)
+  service/                 Coordination layer (engine + queue + WebSocket fan-out)
+    service.go             Service struct, all download/config operations, EngineCallbacks()
+    clienthub.go           WebSocket client hub (register, unregister, broadcast)
+  engine/                  Download engine (core business logic)
+    engine.go              Engine struct, lifecycle orchestration
+    callbacks.go           Callbacks struct (replaces event bus)
+    segment.go             Per-segment goroutine with retry
+    progress.go            Progress aggregator
+    probe.go               HEAD/GET probing
+    filename.go            Filename detection + dedup
+    httpclient.go          HTTP client factory
+    refresh.go             URL refresh
+    checksum.go            File checksum verification
+  queue/                   FIFO queue with concurrency limit
+  server/                  HTTP server (REST API + WebSocket)
+    server.go              Server struct, Handler() returns http.Handler
+    handlers.go            REST endpoint handlers
+    websocket.go           WebSocket handler (reads from ClientHub)
+    middleware.go           recovery, logging, auth
+  config/                  config.json management
+  db/                      SQLite data access layer
+  model/                   Shared types, ID generation
+  notify/                  Desktop notifications (notify-send)
+  testutil/                Test helpers (httptest server)
+extensions/
+  chrome/                  Chrome browser extension
+  firefox/                 Firefox browser extension
+images/                    Source icons
+packaging/
+  bolt.service             Systemd user unit (Type=notify, hardened)
+  bolt.desktop             Desktop entry
+```
 
-**What packages must install:**
-1. `bolt.desktop` → `/usr/share/applications/` (or `~/.local/share/applications/` for user installs)
-2. `bolt.png` → `/usr/share/icons/hicolor/256x256/apps/` (source: `build/appicon.png`)
-3. The `.desktop` file's `StartupWMClass=bolt` must match `ProgramName` in `gui.go`
+### Key Design: Callbacks Replace Event Bus
 
-**Icon files:**
-- `build/appicon.png` — 256x256 RGBA, app icon (Wails build + icon theme install)
-- `cmd/bolt/appicon.png` — same file, embedded via `//go:embed` for `linux.Options{Icon}` (X11 fallback)
-- `internal/tray/icon.png` — 64x64 white-on-transparent, embedded for systray via `energye/systray`
-- `extensions/{chrome,firefox}/icons/` — 16, 48, 128px variants for browser extensions
-- `images/icon.png` — full-resolution source icon (1536x1024), used to generate all of the above
-- `images/banner.png` — repo banner for README
-- `packaging/bolt.desktop` — desktop entry file for Wayland icon resolution
+The old `internal/event/` pub/sub bus is gone. The engine now takes a `*Callbacks` struct with optional function fields (`OnProgress`, `OnCompleted`, `OnFailed`, `OnPaused`, `OnResumed`, `OnAdded`, `OnRemoved`). The service layer provides these callbacks via `EngineCallbacks()`, wiring:
+- Queue completion (`queue.OnDownloadComplete`) on completed/failed/paused
+- WebSocket broadcast to all connected clients
+- Desktop notifications on completed/failed
 
-## Development Phases
+### Key Design: Service Layer
 
-### Phase 1: Download Engine (COMPLETE)
-Standalone binary with embedded engine. No HTTP server, no GUI, no browser extension.
+`internal/service/Service` is the coordination layer between engine, queue, store, and WebSocket clients. All HTTP handlers call service methods instead of directly calling engine/queue/store. The service owns the `ClientHub` for WebSocket fan-out.
 
-**Exit criteria (met):** Can download a file in 16 segments, pause, kill the process, restart, and resume to completion. Verified by `TestIntegration_ExitCriteria`.
+### Key Design: Daemon Lifecycle
 
-**What was built:**
-- Step 1: Project scaffolding + models — `internal/model/`
-- Step 2: Configuration management — `internal/config/`
-- Step 3: Database layer (SQLite/WAL) — `internal/db/`
-- Step 4: Event bus (pub/sub) — `internal/event/`
-- Step 5: Probe + filename detection + HTTP client — `internal/engine/{probe,filename,httpclient}.go`
-- Step 6: Segment downloader + progress aggregator — `internal/engine/{segment,progress}.go`
-- Step 7: Engine core (lifecycle orchestration) — `internal/engine/{engine,refresh}.go`
-- Step 8: Queue manager — `internal/queue/`
-- Step 9: Entry point — `cmd/bolt/`
-- Step 10: Integration tests + Makefile
+`internal/daemon/Daemon` owns the full lifecycle:
+1. Load config → Open DB → Create service (get callbacks) → Create engine → Create queue → Wire service
+2. Instance detection via Unix socket probe
+3. Crash recovery (re-queue stale active downloads)
+4. Serve HTTP on Unix socket + loopback TCP
+5. `sd_notify(READY=1)` for systemd
+6. Block until SIGTERM/SIGINT
+7. Graceful shutdown: stop accepting → pause active downloads → persist progress → close DB → remove socket
 
-### Phase 2: HTTP Server (COMPLETE)
-HTTP server with REST API and WebSocket for browser extension compatibility.
+### Key Design: No CGO
 
-**Exit criteria (met):** Can add downloads via `curl` to the API, see progress via WebSocket, and queue respects concurrency limits.
-
-**What was built:**
-- Step 1: New event types (DownloadPaused, DownloadResumed) — `internal/event/`
-- Step 2: Engine.ProbeURL method — `internal/engine/engine.go`
-- Step 3: WebSocket dependency — `nhooyr.io/websocket`
-- Step 4: HTTP server (REST + WebSocket + middleware) — `internal/server/`
-- Step 5: Entry point updated — `cmd/bolt/main.go`
-
-### Phase 3: Wails GUI + Svelte Frontend (COMPLETE)
-Desktop app with system tray, Wails v2 bindings, Svelte 5 frontend.
-
-**Exit criteria (met):** Fully functional desktop app that can manage downloads with core controls, no CLI needed.
-
-**What was built:**
-- Step 0: Prerequisites — Wails CLI, GTK3/WebKit system deps
-- Step 1: Wails project scaffolding — `wails.json`, `frontend/`, `build/appicon.png`
-- Step 2: Go app bindings (IPC methods) — `internal/app/app.go`
-- Step 3: Entry point — `cmd/bolt/gui.go`, `cmd/bolt/main.go`
-- Step 4: Frontend foundation — types, utils, reactive state, layout shell
-- Step 5: Download list UI — `DownloadList`, `DownloadRow`, `ProgressBar`, `ActionButtons`
-- Step 6: Toolbar + SearchBar + StatusBar
-- Step 7: Add download dialog with URL probing
-- Step 8: Settings dialog with config persistence
-- Step 9: System tray via `energye/systray` — `internal/tray/`
-
-### Phase 4: Browser Extension — P0 (COMPLETE)
-Chromium Manifest V3 extension ("Bolt Capture") that intercepts browser downloads and sends them to Bolt via REST API.
-
-**Exit criteria (met):** Extension intercepts downloads, forwards cookies/referrer, uses check-then-cancel safety, supports context menu "Download with Bolt", Tier 2 refresh matching, and minimal config popup.
-
-**What was built:**
-- Step 1: Backend — Extended `RefreshURL` to accept optional `headers` parameter
-- Step 2: Extension scaffolding — `extensions/chrome/`, `extensions/firefox/`, icons
-- Step 3: Service worker / background script — interception, context menu, refresh matching
-- Step 4: Popup UI — config, connection test, capture toggle
-- Step 5: Makefile — `build-extension` target
-
-### Phase 5: Linux-Only Focus Shift (COMPLETE)
-Removed cross-platform code, updated all docs to reflect Linux-only targeting.
-
-**What was done:**
-- Removed Windows/macOS code paths from `internal/notify/notify.go` (was: `runtime.GOOS` switch with `osascript` and PowerShell; now: direct `notify-send` call)
-- Removed Windows/macOS code paths from `internal/app/app.go` `openPath()` (was: `runtime.GOOS` switch; now: direct `xdg-open` call)
-- Updated PRD, TRD, README, STATUS, CLAUDE.md
-- Renumbered P1/P2/P3 feature phases to 6/7/8
-
-### Phase 6: Remaining P1 Features (COMPLETE)
-Four features for daily-driver readiness.
-
-**What was built:**
-- Extension filters + blocklist — user-configurable min file size, extension whitelist/blacklist, domain blocklist in popup; `shouldCapture(url, config)` with subdomain matching
-- Keyboard shortcuts — Ctrl+N (add), Ctrl+V (paste URL), Delete (remove selected), Space (toggle pause), Ctrl+A (select all), Ctrl+Q (quit); guards for dialogs/form focus
-- Batch URL import — `BatchImportDialog` with textarea/file import, sequential `AddDownload` calls with progress tracking; `SelectTextFile`/`ReadTextFile` IPC methods
-- Queue reordering (drag & drop) — `queue_order` column, `NextQueueOrder`/`ReorderDownloads` DB methods, `PUT /api/downloads/reorder` endpoint, HTML5 drag-and-drop in `DownloadList`/`DownloadRow` with grip handle
-
-### Download Details Dialog (COMPLETE)
-Full details dialog accessible via info button on each download row or double-click on non-completed downloads.
-
-**What was built:**
-- Download details dialog (`DownloadDetailsDialog.svelte`) — 640px wide, collapsible sections for segments, URL, checksum, metadata
-- Segment visualization — per-segment progress bars with byte ranges, polled every 1s while active
-- URL refresh UI — probe new URL, verify size match, refresh via `RefreshURL` IPC
-- Checksum editing — add/edit checksum on any non-completed download (including active); verified on completion with pass/fail indicator
-- Metadata display — ID, directory, sizes, ETag, headers, timestamps, error
-- Backend: `UpdateDownloadChecksum` DB method, `UpdateChecksum` engine method (updates in-memory state for active downloads), `GetDownloadDetail`/`UpdateChecksum` IPC methods, `DownloadDetail` struct
-- Info button (circle-i) in `ActionButtons`, always visible
-- Double-click on non-completed downloads opens details; completed downloads still open file
-- Probe filename detection now falls back to URL path when `Content-Disposition` is absent
-
-## Key Design Decisions
-
-**Linux-Only Focus:** Bolt targets Linux desktop exclusively. This enables deep desktop integration (D-Bus, XDG portals, systemd) instead of lowest-common-denominator cross-platform abstractions. The Go stdlib functions like `os.UserConfigDir()` still work correctly on Linux and are kept as-is.
-
-**Phase 1:** Engine embedded directly in the binary.
-
-**Phase 2:** Added HTTP server with REST API and WebSocket for browser extension compatibility.
-
-**Phase 3:** GUI is the only interface. `bolt` (no args) and `bolt start` launch the GUI. The HTTP server starts alongside for browser extension compatibility. The `internal/app` package wraps the engine as Wails IPC bindings. Events are forwarded via `runtime.EventsEmit`. Frontend assets are embedded at the root package (`embed.go`) since `go:embed` can't use `..` paths. System tray uses `energye/systray` with `RunWithExternalLoop` to avoid conflicting with Wails' main thread. Instance detection uses HTTP probe (`GET /api/stats`) instead of PID files.
-
-**Phase 4:** Vanilla JS extensions split into `extensions/chrome/` and `extensions/firefox/` (no build step, no runtime polyfills). Each directory is directly loadable in its browser. Check-then-cancel safety: verifies Bolt is reachable before cancelling browser download — if Bolt is down, the browser download proceeds normally. `RefreshURL` now accepts optional `headers` map for cookie/referrer forwarding from the extension. Tier 2 refresh matching checks `/api/downloads?status=refresh` for candidates before creating new downloads.
-
-### Alpha Release Features (COMPLETE)
-Six features for daily-driver readiness:
-
-**What was built:**
-- Global speed limiter — `golang.org/x/time/rate`, `Engine.SetSpeedLimit()`, throttles all segments via shared `rate.Limiter`
-- Complete settings panel — speed limit (KB/MB) + theme selector in SettingsDialog
-- Desktop notifications — `internal/notify/` package, `notify-send` on Linux
-- Dark theme — Tailwind `@custom-variant dark`, class-based toggle on `<html>`, system/light/dark modes, all 10 components updated
-- Systemd user unit — `packaging/bolt.service`, `make install` / `make uninstall`
-- Firefox extension support — separate `extensions/firefox/` directory using native `browser.*` API, no polyfills
+The binary is built with `CGO_ENABLED=0`. The SQLite driver (`modernc.org/sqlite`) is pure Go. No Wails, no WebKit, no GTK bindings.
 
 ## Commands
 
 ```
-make build       # frontend build + Go build with Wails tags → ./bolt
-make build-gui   # full Wails build (same result, uses wails CLI)
-make dev         # wails dev (hot-reload)
-make test        # run all tests (no Wails tags needed for tests)
+make build       # CGO_ENABLED=0 go build → ./bolt
+make test        # run all tests
 make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
@@ -177,75 +107,41 @@ make uninstall   # stop + disable + remove binary + unit + .desktop + icon
 make clean       # remove binary, clear test cache
 ```
 
-## Build Tags
+## Config
 
-Wails requires `desktop,production` build tags for release builds. On systems with webkit2gtk-4.1 (Fedora 39+, Ubuntu 24.04+), also add `webkit2_41`. The Makefile handles this automatically. CGO must be enabled (`CGO_ENABLED=1`) for the Wails/WebKit bindings.
+Located at `~/.config/bolt/config.json`.
 
-Tests do not require Wails build tags — `go test ./...` works without them.
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `download_dir` | string | `~/Downloads` | Default download directory |
+| `max_concurrent` | int | 3 | Max concurrent downloads (1-10) |
+| `default_segments` | int | 16 | Default segment count (1-32) |
+| `global_speed_limit` | int64 | 0 | Bytes/sec, 0 = unlimited |
+| `loopback_port` | int | 9683 | Loopback HTTP port (1024-65535) |
+| `auth_token` | string | (random) | 64-char hex auth token |
+| `notifications` | bool | true | Desktop notifications |
+| `max_retries` | int | 10 | Max retries per segment (0-100) |
+| `min_segment_size` | int64 | 1048576 | Min segment size in bytes (≥64KB) |
 
-## Architecture
+## API
 
-```
-cmd/bolt/
-  main.go                  Entry point (GUI / version / help)
-  gui.go                   launchGUI() + Wails window + tray + Linux icon setup
-  appicon.png              Embedded app icon for linux.Options{Icon} (X11 fallback)
-build/
-  appicon.png              256x256 app icon (Wails build + icon theme install)
-embed.go                   //go:embed frontend/dist
-wails.json                 Wails project config
-frontend/                  Svelte 5 + TypeScript + Vite + Tailwind
-  src/
-    App.svelte             Root layout (Toolbar + Search + List + StatusBar)
-    lib/
-      types.ts             TypeScript interfaces mirroring Go models
-      utils/format.ts      Formatting (bytes, speed, ETA, dates)
-      state/
-        downloads.svelte.ts  Reactive download state + event listeners
-        config.svelte.ts     Config state (load/save)
-      components/
-        Toolbar.svelte       Add, Import, Pause All, Resume All, Clear, Settings
-        SearchBar.svelte     Client-side filter
-        DownloadList.svelte  Scrollable download list + drag-and-drop reordering
-        DownloadRow.svelte   Single download with progress + actions + drag handle
-        ProgressBar.svelte   Progress bar (determinate + indeterminate)
-        ActionButtons.svelte Per-download context actions
-        AddDownloadDialog.svelte  URL probe + download creation (supports initialUrl prop)
-        BatchImportDialog.svelte  Batch URL import (paste/file) with progress
-        DownloadDetailsDialog.svelte  Download details with segments, URL refresh, checksum editing
-        SettingsDialog.svelte     Config editor
-        StatusBar.svelte     Active/queued counts + total speed
-internal/
-  app/                     Wails app bindings (IPC methods)
-  model/                   Shared types, ID generation, formatting
-  config/                  config.json management
-  db/                      SQLite data access layer
-  event/                   Event bus (pub/sub)
-  engine/                  Download engine (core business logic)
-  queue/                   Queue manager
-  server/                  HTTP server (REST API + WebSocket)
-  tray/                    System tray (energye/systray, white icon embedded)
-  notify/                  Desktop notifications (notify-send)
-  testutil/                Test helpers (httptest server)
-extensions/
-  chrome/                  Chrome browser extension (chrome.* API)
-    manifest.json          MV3 manifest (service_worker, downloads.ui)
-    background.js          Service worker (interception, context menu, refresh, user filters)
-    content.js             Content script (link click interception)
-    popup/                 Config popup (with Save As warning banner + filters section)
-    welcome/               First-install welcome page (2 steps)
-    icons/                 Extension icons (16, 48, 128)
-  firefox/                 Firefox browser extension (browser.* API)
-    manifest.json          MV3 manifest (background scripts, menus, gecko settings)
-    background.js          Background script (no setUiOptions, user filters)
-    content.js             Content script (link click interception)
-    popup/                 Config popup (no Save As warning, filters section)
-    welcome/               First-install welcome page (1 step, no JS)
-    icons/                 Extension icons (16, 48, 128)
-images/
-  icon.png                 Full-resolution source icon (generate all sizes from this)
-  banner.png               Repo banner for README
-dist/
-  bolt.service             Systemd user unit file
-  bolt.desktop             Desktop entry (Wayland icon resolution)
-```
+All endpoints require auth. REST: `Authorization: Bearer <token>`. WebSocket: `?token=<token>`.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/downloads` | Add download |
+| GET | `/api/downloads` | List downloads |
+| GET | `/api/downloads/{id}` | Get download detail |
+| DELETE | `/api/downloads/{id}` | Delete download |
+| POST | `/api/downloads/{id}/pause` | Pause download |
+| POST | `/api/downloads/{id}/resume` | Resume download |
+| POST | `/api/downloads/{id}/retry` | Retry failed download |
+| POST | `/api/downloads/{id}/refresh` | Refresh URL |
+| POST | `/api/downloads/{id}/set-refresh` | Set refresh status |
+| POST | `/api/downloads/{id}/checksum` | Update checksum |
+| PUT | `/api/downloads/reorder` | Reorder queue |
+| GET | `/api/config` | Get config (sans auth token) |
+| PUT | `/api/config` | Update config |
+| GET | `/api/stats` | Get stats |
+| POST | `/api/probe` | Probe URL |
+| GET | `/ws` | WebSocket for real-time events |

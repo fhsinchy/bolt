@@ -14,7 +14,6 @@ import (
 
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"github.com/fhsinchy/bolt/internal/queue"
 	"github.com/fhsinchy/bolt/internal/testutil"
@@ -43,23 +42,40 @@ func TestStress_ConcurrentQueuePressure(t *testing.T) {
 	cfg.MaxRetries = 3
 	cfg.MinSegmentSize = 1024
 
-	bus := event.NewBus()
-	eng := NewWithClient(store, cfg, bus, ts.Client())
+	completedCh := make(chan string, totalDownloads)
+	failedCh := make(chan string, totalDownloads)
 
-	queueMgr := queue.New(store, bus, maxConcurrent, func(ctx context.Context, id string) error {
+	cb := &Callbacks{
+		OnCompleted: func(id string, dl model.Download) { completedCh <- id },
+		OnFailed:    func(id string, dl model.Download, err error) { failedCh <- id },
+	}
+
+	eng := NewWithClient(store, cfg, cb, ts.Client())
+
+	// Wire queue completion to callbacks after queue is created
+	var queueMgr *queue.Manager
+	cb.OnCompleted = func(id string, dl model.Download) {
+		completedCh <- id
+		queueMgr.OnDownloadComplete(id)
+	}
+	cb.OnFailed = func(id string, dl model.Download, err error) {
+		failedCh <- id
+		queueMgr.OnDownloadComplete(id)
+	}
+	cb.OnPaused = func(id string) {
+		queueMgr.OnDownloadComplete(id)
+	}
+
+	queueMgr = queue.New(store, maxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
 	}, func(ctx context.Context, id string) error {
 		return eng.PauseDownload(ctx, id)
-	})
+	}, func(id string) {})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go queueMgr.Run(ctx)
-
-	// Subscribe to events
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	// Add and enqueue all downloads
 	ids := make(map[string]bool, totalDownloads)
@@ -80,19 +96,14 @@ func TestStress_ConcurrentQueuePressure(t *testing.T) {
 	completedCount := 0
 	for completedCount < totalDownloads {
 		select {
-		case evt := <-ch:
-			switch e := evt.(type) {
-			case event.DownloadCompleted:
-				if _, ok := ids[e.DownloadID]; ok {
-					ids[e.DownloadID] = true
-					completedCount++
-					queueMgr.OnDownloadComplete(e.DownloadID)
-				}
-			case event.DownloadFailed:
-				t.Errorf("download %s failed: %s", e.DownloadID, e.Error)
-				completedCount++ // count failures to avoid infinite loop
-				queueMgr.OnDownloadComplete(e.DownloadID)
+		case id := <-completedCh:
+			if _, ok := ids[id]; ok {
+				ids[id] = true
+				completedCount++
 			}
+		case id := <-failedCh:
+			t.Errorf("download %s failed", id)
+			completedCount++ // count failures to avoid infinite loop
 		case <-timeout:
 			t.Fatalf("timed out: %d/%d completed", completedCount, totalDownloads)
 		}
@@ -116,11 +127,8 @@ func TestStress_RapidPauseResume(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize, testutil.WithLatency(20*time.Millisecond))
 	defer ts.Close()
 
-	eng, _, bus, tmpDir := setupEngine(t)
+	eng, _, tc, tmpDir := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -139,17 +147,12 @@ func TestStress_RapidPauseResume(t *testing.T) {
 	var mu sync.Mutex
 	completed := false
 
-	// Monitor completion in a separate goroutine so pause/resume loop
-	// can detect early completion.
+	// Monitor completion in a separate goroutine
 	go func() {
-		for evt := range ch {
-			if e, ok := evt.(event.DownloadCompleted); ok && e.DownloadID == dl.ID {
-				mu.Lock()
-				completed = true
-				mu.Unlock()
-				return
-			}
-		}
+		<-tc.completedCh
+		mu.Lock()
+		completed = true
+		mu.Unlock()
 	}()
 
 	for i := 0; i < cycles; i++ {
@@ -163,7 +166,6 @@ func TestStress_RapidPauseResume(t *testing.T) {
 		time.Sleep(cycleDelay)
 
 		if err := eng.PauseDownload(ctx, dl.ID); err != nil {
-			// May already be completed
 			mu.Lock()
 			done = completed
 			mu.Unlock()
@@ -228,11 +230,8 @@ func TestStress_LargeFileIntegrity(t *testing.T) {
 	ts := testutil.NewTestServer(fileSize)
 	defer ts.Close()
 
-	eng, _, bus, tmpDir := setupEngine(t)
+	eng, _, tc, tmpDir := setupEngine(t)
 	eng.client = ts.Client()
-
-	ch, subID := bus.Subscribe()
-	defer bus.Unsubscribe(subID)
 
 	ctx := context.Background()
 	dl, err := eng.AddDownload(ctx, model.AddRequest{
@@ -248,22 +247,14 @@ func TestStress_LargeFileIntegrity(t *testing.T) {
 	}
 
 	// Wait for completion
-	timeout := time.After(120 * time.Second)
-	for {
-		select {
-		case evt := <-ch:
-			if e, ok := evt.(event.DownloadCompleted); ok && e.DownloadID == dl.ID {
-				goto verify
-			}
-			if e, ok := evt.(event.DownloadFailed); ok && e.DownloadID == dl.ID {
-				t.Fatalf("download failed: %s", e.Error)
-			}
-		case <-timeout:
-			t.Fatal("timed out waiting for 50MB download to complete")
-		}
+	select {
+	case <-tc.completedCh:
+	case id := <-tc.failedCh:
+		t.Fatalf("download failed: %s", id)
+	case <-time.After(120 * time.Second):
+		t.Fatal("timed out waiting for 50MB download to complete")
 	}
 
-verify:
 	filePath := filepath.Join(tmpDir, dl.Filename)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -274,7 +265,6 @@ verify:
 		t.Fatalf("file size = %d, want %d", len(data), len(expected))
 	}
 	if !bytes.Equal(data, expected) {
-		// Find first mismatch for debugging
 		for i := range data {
 			if data[i] != expected[i] {
 				t.Fatalf("byte mismatch at offset %d: got 0x%02x, want 0x%02x", i, data[i], expected[i])

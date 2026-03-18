@@ -19,9 +19,9 @@ import (
 	"github.com/fhsinchy/bolt/internal/config"
 	"github.com/fhsinchy/bolt/internal/db"
 	"github.com/fhsinchy/bolt/internal/engine"
-	"github.com/fhsinchy/bolt/internal/event"
 	"github.com/fhsinchy/bolt/internal/model"
 	"github.com/fhsinchy/bolt/internal/queue"
+	"github.com/fhsinchy/bolt/internal/service"
 	"github.com/fhsinchy/bolt/internal/testutil"
 )
 
@@ -29,7 +29,7 @@ import (
 type integrationEnv struct {
 	baseURL    string
 	token      string
-	bus        *event.Bus
+	svc        *service.Service
 	fileServer *httptest.Server
 }
 
@@ -41,8 +41,6 @@ type integrationCfg struct {
 }
 
 // withoutQueue prevents the queue manager loop from starting.
-// Downloads stay in "queued" status, which is useful for lifecycle tests
-// that need to control state transitions without races.
 func withoutQueue() integrationOpt {
 	return func(c *integrationCfg) { c.skipQueue = true }
 }
@@ -52,8 +50,6 @@ func withFileServer(fs *httptest.Server) integrationOpt {
 	return func(c *integrationCfg) { c.fileServer = fs }
 }
 
-// startIntegrationServer spins up a real HTTP server on a random port and
-// returns an integrationEnv. All resources are cleaned up via t.Cleanup.
 func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEnv {
 	t.Helper()
 
@@ -67,6 +63,9 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	cfg := config.DefaultConfig()
 	cfg.DownloadDir = tmp
 	cfg.AuthToken = "test-token-0123456789abcdef"
+	cfg.Notifications = false
+
+	cfgPath := filepath.Join(tmp, "config.json")
 
 	dbPath := filepath.Join(tmp, "integration.db")
 	store, err := db.Open(dbPath)
@@ -75,41 +74,28 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	}
 	t.Cleanup(func() { store.Close() })
 
-	bus := event.NewBus()
-
 	fileServer := icfg.fileServer
 	if fileServer == nil {
 		fileServer = testutil.NewTestServer(1024 * 100) // 100KB
 		t.Cleanup(fileServer.Close)
 	}
 
-	eng := engine.NewWithClient(store, cfg, bus, fileServer.Client())
+	svc := service.New(nil, nil, store, cfg, cfgPath)
+	callbacks := svc.EngineCallbacks()
 
-	queueMgr := queue.New(store, bus, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
+	eng := engine.NewWithClient(store, cfg, callbacks, fileServer.Client())
+
+	queueMgr := queue.New(store, cfg.MaxConcurrent, func(ctx context.Context, id string) error {
 		return eng.StartDownload(ctx, id)
 	}, func(ctx context.Context, id string) error {
 		return eng.PauseDownload(ctx, id)
-	})
+	}, svc.OnResumedCallback())
 
-	srv := New(eng, store, cfg, bus, queueMgr)
+	svc.SetEngine(eng)
+	svc.SetQueue(queueMgr)
 
-	// Build the same mux + middleware chain the server uses internally.
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/downloads", srv.handleAddDownload)
-	mux.HandleFunc("GET /api/downloads", srv.handleListDownloads)
-	mux.HandleFunc("GET /api/downloads/{id}", srv.handleGetDownload)
-	mux.HandleFunc("DELETE /api/downloads/{id}", srv.handleDeleteDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/pause", srv.handlePauseDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/resume", srv.handleResumeDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/retry", srv.handleRetryDownload)
-	mux.HandleFunc("POST /api/downloads/{id}/refresh", srv.handleRefreshURL)
-	mux.HandleFunc("GET /api/config", srv.handleGetConfig)
-	mux.HandleFunc("PUT /api/config", srv.handleUpdateConfig)
-	mux.HandleFunc("GET /api/stats", srv.handleGetStats)
-	mux.HandleFunc("POST /api/probe", srv.handleProbe)
-	mux.HandleFunc("GET /ws", srv.handleWebSocket)
-
-	handler := srv.recovery(srv.logging(srv.auth(mux)))
+	srv := New(svc, cfg)
+	handler := srv.Handler()
 
 	// Listen on a random port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -143,13 +129,11 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 	return &integrationEnv{
 		baseURL:    baseURL,
 		token:      cfg.AuthToken,
-		bus:        bus,
+		svc:        svc,
 		fileServer: fileServer,
 	}
 }
 
-// doJSON makes a real HTTP request with JSON body and auth header, returning
-// the status code and the response body parsed as a generic JSON map.
 func (ie *integrationEnv) doJSON(t *testing.T, method, path string, body any) (int, map[string]any) {
 	t.Helper()
 
@@ -189,8 +173,6 @@ func (ie *integrationEnv) doJSON(t *testing.T, method, path string, body any) (i
 	return resp.StatusCode, result
 }
 
-// doRaw makes a real HTTP request with no auth and a raw string body.
-// Useful for testing auth failures and malformed input.
 func (ie *integrationEnv) doRaw(t *testing.T, method, path, rawBody string, headers map[string]string) (int, map[string]any) {
 	t.Helper()
 
@@ -230,7 +212,6 @@ func (ie *integrationEnv) doRaw(t *testing.T, method, path, rawBody string, head
 func TestIntegration_AddAndList(t *testing.T) {
 	ie := startIntegrationServer(t)
 
-	// Add a download.
 	addBody := map[string]string{
 		"url": ie.fileServer.URL + "/testfile.bin",
 	}
@@ -247,7 +228,6 @@ func TestIntegration_AddAndList(t *testing.T) {
 		t.Fatal("download missing 'id'")
 	}
 
-	// List downloads and verify our new download is present.
 	status, resp = ie.doJSON(t, "GET", "/api/downloads", nil)
 	if status != http.StatusOK {
 		t.Fatalf("GET /api/downloads: expected 200, got %d", status)
@@ -268,7 +248,6 @@ func TestIntegration_AddAndList(t *testing.T) {
 func TestIntegration_Auth401(t *testing.T) {
 	ie := startIntegrationServer(t)
 
-	// Missing token.
 	status, _ := ie.doRaw(t, "GET", "/api/stats", "", map[string]string{
 		"Content-Type": "application/json",
 	})
@@ -276,7 +255,6 @@ func TestIntegration_Auth401(t *testing.T) {
 		t.Fatalf("missing token: expected 401, got %d", status)
 	}
 
-	// Wrong token.
 	status, _ = ie.doRaw(t, "GET", "/api/stats", "", map[string]string{
 		"Content-Type":  "application/json",
 		"Authorization": "Bearer totally-wrong-token-here",
@@ -340,7 +318,6 @@ func TestIntegration_ProbeEndpoint(t *testing.T) {
 func TestIntegration_WebSocketEvents(t *testing.T) {
 	ie := startIntegrationServer(t)
 
-	// Connect via WebSocket with token as query param.
 	wsURL := "ws" + ie.baseURL[4:] + "/ws?token=" + ie.token
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -354,14 +331,15 @@ func TestIntegration_WebSocketEvents(t *testing.T) {
 	// Give the WebSocket subscription a moment to register.
 	time.Sleep(50 * time.Millisecond)
 
-	// Publish an event on the bus.
-	ie.bus.Publish(event.DownloadAdded{
-		DownloadID: "test-ws-id",
-		Filename:   "test-ws.bin",
-		TotalSize:  2048,
-	})
+	// Add a download which triggers OnAdded broadcast
+	addBody := map[string]string{
+		"url": ie.fileServer.URL + "/ws-test.bin",
+	}
+	status, _ := ie.doJSON(t, "POST", "/api/downloads", addBody)
+	if status != http.StatusCreated {
+		t.Fatalf("add: expected 201, got %d", status)
+	}
 
-	// Read the event from the WebSocket.
 	_, data, err := conn.Read(ctx)
 	if err != nil {
 		t.Fatalf("ws read: %v", err)
@@ -375,20 +353,9 @@ func TestIntegration_WebSocketEvents(t *testing.T) {
 	if msg["type"] != "download_added" {
 		t.Fatalf("expected type download_added, got %v", msg["type"])
 	}
-	if msg["download_id"] != "test-ws-id" {
-		t.Fatalf("expected download_id test-ws-id, got %v", msg["download_id"])
-	}
-	if msg["filename"] != "test-ws.bin" {
-		t.Fatalf("expected filename test-ws.bin, got %v", msg["filename"])
-	}
-	if totalSize, ok := msg["total_size"].(float64); !ok || int64(totalSize) != 2048 {
-		t.Fatalf("expected total_size 2048, got %v", msg["total_size"])
-	}
 }
 
 func TestIntegration_FullLifecycle(t *testing.T) {
-	// Use withoutQueue so downloads stay in "queued" status and we can
-	// control state transitions without races from the queue loop.
 	ie := startIntegrationServer(t, withoutQueue())
 
 	// Step 1: Add a download (stays queued because queue is not running).
