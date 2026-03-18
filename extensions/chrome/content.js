@@ -1,91 +1,77 @@
-// Bolt Capture — Content Script (Chrome)
-// Intercepts clicks on download links BEFORE the browser starts the download,
-// preventing the Save As dialog from appearing.
+// Content script: intercept clicks on download links when capture is enabled.
+// Injected into all pages via manifest.json content_scripts declaration.
 //
-// Dev logging: open DevTools on any page → Console → filter by "[Bolt]".
+// This is intentionally conservative — it only matches URLs with file extensions
+// in the path. URLs with filenames in query parameters or no extension at all
+// will not be caught here. That is fine: the context menu and downloads.onCreated
+// paths are the primary capture mechanisms. This script is a convenience for
+// explicit link clicks on obvious download links.
 
-// File extensions that indicate a downloadable file.
-const DOWNLOAD_EXTENSIONS = [
-  // Archives
-  '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar', '.zst',
-  // Disk images
-  '.iso', '.img', '.dmg',
-  // Programs
-  '.exe', '.msi', '.deb', '.rpm', '.appimage', '.snap', '.flatpak', '.pkg',
-  // Documents
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp',
-  // Media
-  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v',
-  '.mp3', '.flac', '.wav', '.aac', '.ogg', '.wma', '.m4a',
-  // Torrents
-  '.torrent',
-];
-
-// Extensions to never intercept (web pages / resources).
-const SKIP_EXTENSIONS = ['.html', '.htm', '.php', '.asp', '.aspx', '.jsp', '.json', '.xml', '.js', '.css'];
+const DOWNLOAD_EXTENSIONS = new Set([
+  ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz",
+  ".gz", ".bz2", ".xz", ".7z", ".rar",
+  ".iso", ".img",
+  ".deb", ".rpm", ".AppImage", ".flatpak", ".snap",
+  ".exe", ".msi", ".dmg", ".pkg",
+  ".pdf",
+  ".bin", ".run", ".sh",
+]);
 
 function getExtension(url) {
   try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    const dot = pathname.lastIndexOf('.');
-    if (dot === -1) return '';
-    // Strip query-like suffixes that snuck into pathname
-    return pathname.slice(dot).split(/[?#]/)[0];
+    const pathname = new URL(url).pathname;
+    const filename = pathname.split("/").pop();
+    if (!filename) return "";
+
+    // Handle .tar.gz, .tar.bz2, .tar.xz
+    for (const ext of [".tar.gz", ".tar.bz2", ".tar.xz"]) {
+      if (filename.toLowerCase().endsWith(ext)) return ext;
+    }
+
+    const dotIdx = filename.lastIndexOf(".");
+    if (dotIdx === -1) return "";
+    return filename.slice(dotIdx).toLowerCase();
   } catch {
-    return '';
+    return "";
   }
 }
 
-function isDownloadLink(anchor) {
-  // Explicit download attribute is a strong signal.
-  if (anchor.hasAttribute('download')) return true;
-
-  const href = anchor.href;
-  if (!href) return false;
-
-  // Skip non-HTTP links.
-  if (!href.startsWith('http://') && !href.startsWith('https://')) return false;
-
-  // Skip same-page anchors.
-  if (href.includes('#') && href.split('#')[0] === location.href.split('#')[0]) return false;
-
-  const ext = getExtension(href);
-
-  // Explicitly skip web page extensions.
-  if (SKIP_EXTENSIONS.includes(ext)) return false;
-
-  // Match known download extensions.
-  if (DOWNLOAD_EXTENSIONS.includes(ext)) return true;
-
-  return false;
+function isDownloadLink(url) {
+  if (!url || !url.startsWith("http")) return false;
+  const ext = getExtension(url);
+  return DOWNLOAD_EXTENSIONS.has(ext);
 }
 
-document.addEventListener('click', (e) => {
-  // Don't interfere with modified clicks (new tab, etc.).
-  if (e.ctrlKey || e.shiftKey || e.metaKey || e.altKey || e.button !== 0) return;
+// Cache capture state so we can check synchronously in the click handler.
+// Updated on storage changes and on initial load.
+let captureEnabled = false;
+chrome.storage.local.get({ captureEnabled: false }, (s) => {
+  captureEnabled = s.captureEnabled;
+});
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.captureEnabled) {
+    captureEnabled = changes.captureEnabled.newValue;
+  }
+});
 
-  const anchor = e.target.closest('a[href]');
-  if (!anchor) return;
-  if (!isDownloadLink(anchor)) return;
+document.addEventListener("click", (e) => {
+  // Only intercept left clicks without modifiers
+  if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+  if (!captureEnabled) return;
 
-  const url = anchor.href;
+  const link = e.target.closest("a[href]");
+  if (!link) return;
 
-  // Ask the background script whether capture is enabled and Bolt is reachable.
-  // We preventDefault synchronously so the browser never starts the download.
+  const url = link.href;
+  if (!isDownloadLink(url)) return;
+
+  // preventDefault must be synchronous — no awaits before this point.
   e.preventDefault();
+  e.stopPropagation();
 
-  console.log('[Bolt] Intercepted link click:', url);
-
-  try {
-    chrome.runtime.sendMessage({
-      type: 'link-download',
-      url,
-      referrer: location.href,
-    });
-  } catch {
-    // Extension context invalidated (e.g. extension reloaded). Let the
-    // browser handle the navigation normally by re-clicking the link.
-    console.warn('[Bolt] Extension context invalidated — falling back to browser.');
-    window.open(url, '_self');
-  }
-}, true); // Capture phase — runs before page handlers.
+  chrome.runtime.sendMessage({
+    type: "download-link",
+    url,
+    pageUrl: window.location.href,
+  });
+}, true);

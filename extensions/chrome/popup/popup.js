@@ -1,188 +1,87 @@
-const DEFAULT_CONFIG = {
-  serverUrl: 'http://127.0.0.1:9683',
-  authToken: '',
-  captureEnabled: true,
-  minFileSize: 0,
-  extensionWhitelist: [],
-  extensionBlacklist: [],
-  domainBlocklist: [],
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
+const captureToggle = document.getElementById("capture-toggle");
+const minSize = document.getElementById("min-size");
+const sizeUnit = document.getElementById("size-unit");
+const extWhitelist = document.getElementById("ext-whitelist");
+const extBlacklist = document.getElementById("ext-blacklist");
+const domainBlocklist = document.getElementById("domain-blocklist");
+const saveBtn = document.getElementById("save-filters");
+
+const STATUS_LABELS = {
+  ready: "Connected",
+  daemon_unavailable: "Daemon not running",
+  host_unavailable: "Host not installed",
 };
 
-const serverUrlInput = document.getElementById('server-url');
-const authTokenInput = document.getElementById('auth-token');
-const captureToggle = document.getElementById('capture-enabled');
-const testBtn = document.getElementById('test-btn');
-const saveBtn = document.getElementById('save-btn');
-const toggleTokenBtn = document.getElementById('toggle-token');
-const statusDot = document.getElementById('status-dot');
-const statusText = document.getElementById('status-text');
-const filterToggleBtn = document.getElementById('filter-toggle');
-const filterArrow = document.getElementById('filter-arrow');
-const filterContent = document.getElementById('filter-content');
-const minFileSizeInput = document.getElementById('min-file-size');
-const minFileSizeUnit = document.getElementById('min-file-size-unit');
-const extWhitelist = document.getElementById('ext-whitelist');
-const extBlacklist = document.getElementById('ext-blacklist');
-const domainBlocklist = document.getElementById('domain-blocklist');
+// --- State ---
 
-// --- Filter helpers ---
-
-function normalizeExtension(ext) {
-  ext = ext.trim().toLowerCase();
-  if (ext && !ext.startsWith('.')) ext = '.' + ext;
-  return ext;
+async function updateStatus() {
+  const resp = await chrome.runtime.sendMessage({ type: "get-state" });
+  const state = resp?.connectionState || "host_unavailable";
+  statusDot.className = "status-dot " + state;
+  statusText.textContent = STATUS_LABELS[state] || "Unknown";
 }
 
-function parseList(text) {
-  return text.split(',').map(s => s.trim()).filter(Boolean);
-}
+// --- Settings ---
 
-// --- Load config on popup open ---
+async function loadSettings() {
+  const s = await chrome.storage.local.get({
+    captureEnabled: false,
+    minFileSize: 0,
+    extensionWhitelist: [],
+    extensionBlacklist: [],
+    domainBlocklist: [],
+  });
 
-async function loadConfig() {
-  const result = await chrome.storage.local.get('config');
-  const config = { ...DEFAULT_CONFIG, ...result.config };
+  captureToggle.checked = s.captureEnabled;
 
-  serverUrlInput.value = config.serverUrl;
-  authTokenInput.value = config.authToken;
-  captureToggle.checked = config.captureEnabled;
-
-  // Populate filter fields
-  const sizeBytes = config.minFileSize || 0;
-  if (sizeBytes >= 1024 * 1024 && sizeBytes % (1024 * 1024) === 0) {
-    minFileSizeInput.value = sizeBytes / (1024 * 1024);
-    minFileSizeUnit.value = 'MB';
+  // Convert bytes to display value
+  if (s.minFileSize >= 1048576 && s.minFileSize % 1048576 === 0) {
+    minSize.value = s.minFileSize / 1048576;
+    sizeUnit.value = "1048576";
+  } else if (s.minFileSize >= 1024) {
+    minSize.value = Math.round(s.minFileSize / 1024);
+    sizeUnit.value = "1024";
   } else {
-    minFileSizeInput.value = Math.round(sizeBytes / 1024);
-    minFileSizeUnit.value = 'KB';
+    minSize.value = s.minFileSize;
+    sizeUnit.value = "1024";
   }
-  extWhitelist.value = (config.extensionWhitelist || []).join(', ');
-  extBlacklist.value = (config.extensionBlacklist || []).join(', ');
-  domainBlocklist.value = (config.domainBlocklist || []).join(', ');
 
-  testConnection(config.serverUrl, config.authToken);
+  extWhitelist.value = s.extensionWhitelist.join(", ");
+  extBlacklist.value = s.extensionBlacklist.join(", ");
+  domainBlocklist.value = s.domainBlocklist.join(", ");
 }
 
-// --- Connection test ---
-
-async function testConnection(serverUrl, token) {
-  statusDot.className = 'status-dot';
-  statusText.textContent = 'Checking...';
-  testBtn.disabled = true;
-
-  // Dev: right-click popup → Inspect to see console output
-  console.log('[Bolt] Testing connection to', serverUrl);
-
-  try {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const resp = await fetch(`${serverUrl}/api/stats`, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(3000),
-    });
-
-    console.log('[Bolt] Response:', resp.status, resp.statusText);
-
-    if (resp.ok) {
-      const data = await resp.json();
-      statusDot.classList.add('connected');
-      statusText.textContent = `Connected (v${data.version || '?'})`;
-    } else if (resp.status === 401) {
-      statusDot.classList.add('disconnected');
-      statusText.textContent = token
-        ? 'Token rejected — check config.json'
-        : 'Auth token required';
-    } else {
-      // 404 likely means another service (e.g. aria2) is on this port, not Bolt
-      statusDot.classList.add('disconnected');
-      statusText.textContent = resp.status === 404
-        ? 'Not Bolt — wrong port? (got 404)'
-        : `Unexpected response (${resp.status})`;
-    }
-  } catch (err) {
-    console.warn('[Bolt] Connection failed:', err.message);
-    statusDot.classList.add('disconnected');
-    statusText.textContent = 'Not reachable — is Bolt running?';
-  } finally {
-    testBtn.disabled = false;
-  }
+function parseList(value) {
+  return value
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 }
 
-// --- Save config ---
-
-async function saveConfig() {
-  const sizeVal = parseFloat(minFileSizeInput.value) || 0;
-  const sizeUnit = minFileSizeUnit.value;
-  const sizeBytes = sizeUnit === 'MB' ? sizeVal * 1024 * 1024 : sizeVal * 1024;
-
-  const config = {
-    serverUrl: serverUrlInput.value.replace(/\/+$/, '') || DEFAULT_CONFIG.serverUrl,
-    authToken: authTokenInput.value,
-    captureEnabled: captureToggle.checked,
-    minFileSize: sizeBytes,
-    extensionWhitelist: parseList(extWhitelist.value).map(normalizeExtension).filter(Boolean),
-    extensionBlacklist: parseList(extBlacklist.value).map(normalizeExtension).filter(Boolean),
-    domainBlocklist: parseList(domainBlocklist.value).map(s => s.trim().toLowerCase()).filter(Boolean),
-  };
-
-  await chrome.storage.local.set({ config });
-
-  saveBtn.textContent = 'Saved';
-  setTimeout(() => {
-    saveBtn.textContent = 'Save';
-  }, 1500);
+function parseExtensionList(value) {
+  return parseList(value).map((e) => (e.startsWith(".") ? e : "." + e));
 }
 
 // --- Event listeners ---
 
-testBtn.addEventListener('click', () => {
-  testConnection(serverUrlInput.value.replace(/\/+$/, ''), authTokenInput.value);
+captureToggle.addEventListener("change", () => {
+  chrome.storage.local.set({ captureEnabled: captureToggle.checked });
 });
 
-saveBtn.addEventListener('click', saveConfig);
-
-captureToggle.addEventListener('change', async () => {
-  const result = await chrome.storage.local.get('config');
-  const config = { ...DEFAULT_CONFIG, ...result.config };
-  config.captureEnabled = captureToggle.checked;
-  await chrome.storage.local.set({ config });
-});
-
-toggleTokenBtn.addEventListener('click', () => {
-  const isPassword = authTokenInput.type === 'password';
-  authTokenInput.type = isPassword ? 'text' : 'password';
-});
-
-filterToggleBtn.addEventListener('click', () => {
-  filterContent.classList.toggle('hidden');
-  filterArrow.classList.toggle('open');
-});
-
-document.getElementById('chrome-downloads-link').addEventListener('click', (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: 'chrome://settings/downloads' });
-});
-
-// --- Warning banner dismiss ---
-
-const warningBanner = document.getElementById('save-dialog-warning');
-const dismissBtn = document.getElementById('dismiss-warning');
-
-async function loadWarningState() {
-  const result = await chrome.storage.local.get('saveDialogWarningDismissed');
-  if (result.saveDialogWarningDismissed) {
-    warningBanner.classList.add('hidden');
-  }
-}
-
-dismissBtn.addEventListener('click', async () => {
-  warningBanner.classList.add('hidden');
-  await chrome.storage.local.set({ saveDialogWarningDismissed: true });
+saveBtn.addEventListener("click", () => {
+  const sizeBytes = (parseInt(minSize.value, 10) || 0) * parseInt(sizeUnit.value, 10);
+  chrome.storage.local.set({
+    minFileSize: sizeBytes,
+    extensionWhitelist: parseExtensionList(extWhitelist.value),
+    extensionBlacklist: parseExtensionList(extBlacklist.value),
+    domainBlocklist: parseList(domainBlocklist.value),
+  });
+  saveBtn.textContent = "Saved";
+  setTimeout(() => (saveBtn.textContent = "Save"), 1500);
 });
 
 // --- Init ---
-
-loadConfig();
-loadWarningState();
+updateStatus();
+loadSettings();

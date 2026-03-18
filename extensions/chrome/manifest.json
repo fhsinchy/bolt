@@ -1,11 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Bolt Capture",
-  "version": "0.1.0",
-  "description": "Capture browser downloads and send them to Bolt",
-  "permissions": ["downloads", "downloads.ui", "cookies", "contextMenus", "storage", "notifications", "webRequest"],
+  "name": "Bolt Download Manager",
+  "version": "2.0.0",
+  "description": "Hand off browser downloads to Bolt",
+  "permissions": [
+    "downloads",
+    "contextMenus",
+    "storage",
+    "cookies",
+    "nativeMessaging",
+    "notifications"
+  ],
   "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -18,13 +34,5 @@
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ]
+  }
 }
