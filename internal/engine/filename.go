@@ -158,6 +158,13 @@ func splitFilename(name string) (base, ext string) {
 // sanitizeFilename removes or replaces characters that are unsafe or
 // undesirable in filenames across operating systems.
 func sanitizeFilename(name string) string {
+	// Decode any percent-encoded characters (e.g. %5B → [). Filenames
+	// may arrive percent-encoded from browser extensions, URL extraction,
+	// or Content-Disposition headers. If decoding fails, keep the original.
+	if decoded, err := url.PathUnescape(name); err == nil {
+		name = decoded
+	}
+
 	// Strip null bytes.
 	name = strings.ReplaceAll(name, "\x00", "")
 
