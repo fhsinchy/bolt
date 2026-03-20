@@ -8,14 +8,14 @@ import (
 )
 
 func TestDetectFilename_UserProvided(t *testing.T) {
-	got := DetectFilename("custom.zip", `attachment; filename="server.zip"`, "https://example.com/url.zip")
+	got := DetectFilename("custom.zip", "server.zip", "https://example.com/url.zip")
 	if got != "custom.zip" {
 		t.Errorf("got %q, want %q", got, "custom.zip")
 	}
 }
 
-func TestDetectFilename_ContentDisposition(t *testing.T) {
-	got := DetectFilename("", `attachment; filename="report.pdf"`, "https://example.com/dl?id=42")
+func TestDetectFilename_ProbeFilename(t *testing.T) {
+	got := DetectFilename("", "report.pdf", "https://example.com/dl?id=42")
 	if got != "report.pdf" {
 		t.Errorf("got %q, want %q", got, "report.pdf")
 	}
@@ -50,14 +50,14 @@ func TestDetectFilename_Priority(t *testing.T) {
 		{
 			name: "user wins over all",
 			user: "my.file",
-			cd:   `attachment; filename="cd.file"`,
+			cd:   "cd.file",
 			url:  "https://example.com/url.file",
 			wantPfx: "my.file",
 		},
 		{
-			name: "cd wins over url",
+			name: "probe wins over url",
 			user: "",
-			cd:   `attachment; filename="cd.file"`,
+			cd:   "cd.file",
 			url:  "https://example.com/url.file",
 			wantPfx: "cd.file",
 		},
@@ -87,12 +87,11 @@ func TestDetectFilename_Priority(t *testing.T) {
 	}
 }
 
-func TestDetectFilename_ContentDispositionRFC5987(t *testing.T) {
-	// mime.ParseMediaType handles RFC 5987 filename* by decoding and
-	// placing the result in params["filename"].
-	cd := `attachment; filename*=UTF-8''%E4%B8%AD%E6%96%87%E6%96%87%E4%BB%B6.txt`
-	got := DetectFilename("", cd, "")
-	want := "\u4e2d\u6587\u6587\u4ef6.txt" // Chinese characters
+func TestDetectFilename_ProbeFilenameUnicode(t *testing.T) {
+	// Probe layer already decodes RFC 5987 filename* — DetectFilename
+	// receives the decoded result directly.
+	got := DetectFilename("", "\u4e2d\u6587\u6587\u4ef6.txt", "")
+	want := "\u4e2d\u6587\u6587\u4ef6.txt"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

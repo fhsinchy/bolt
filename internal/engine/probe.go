@@ -64,7 +64,7 @@ func probeHEAD(ctx context.Context, client *http.Client, rawURL string, headers 
 		return nil, fmt.Errorf("%w: HEAD %s returned %d", model.ErrProbeRejected, rawURL, resp.StatusCode)
 	}
 
-	return parseProbeResponse(resp), nil
+	return parseProbeResponse(resp, rawURL), nil
 }
 
 // probeGET performs a GET with Range: bytes=0-0 to discover Content-Range
@@ -87,7 +87,7 @@ func probeGET(ctx context.Context, client *http.Client, rawURL string, headers m
 		return nil, fmt.Errorf("%w: GET %s returned %d", model.ErrProbeRejected, rawURL, resp.StatusCode)
 	}
 
-	result := parseProbeResponse(resp)
+	result := parseProbeResponse(resp, rawURL)
 
 	// When the server honours the range request it returns 206 with a
 	// Content-Range header such as "bytes 0-0/12345".
@@ -104,7 +104,9 @@ func probeGET(ctx context.Context, client *http.Client, rawURL string, headers m
 }
 
 // parseProbeResponse extracts common metadata from a response.
-func parseProbeResponse(resp *http.Response) *model.ProbeResult {
+// originalURL is the user-provided URL before redirects — its path
+// segment often has a better filename than the CDN redirect target.
+func parseProbeResponse(resp *http.Response, originalURL string) *model.ProbeResult {
 	result := &model.ProbeResult{
 		TotalSize:    -1,
 		FinalURL:     resp.Request.URL.String(),
@@ -125,12 +127,16 @@ func parseProbeResponse(resp *http.Response) *model.ProbeResult {
 		result.AcceptsRanges = true
 	}
 
-	// Content-Disposition filename
+	// Content-Disposition filename (highest priority)
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		result.Filename = parseContentDispositionFilename(cd)
 	}
 
-	// Fall back to URL path segment
+	// Fall back to URL path segment. Try the original URL first — CDN
+	// redirect targets often have opaque token paths or stripped extensions.
+	if result.Filename == "" {
+		result.Filename = filenameFromURL(originalURL)
+	}
 	if result.Filename == "" {
 		result.Filename = filenameFromURL(result.FinalURL)
 	}

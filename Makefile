@@ -52,7 +52,7 @@ install: build build-host
 		echo "Note: skipping bolt.desktop (bolt-qt not built)"; \
 	fi
 	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
-	cp images/icon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
+	cp images/appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
 	-update-desktop-database ~/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload

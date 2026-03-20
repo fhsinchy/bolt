@@ -18,21 +18,20 @@ import (
 // following priority order:
 //
 //  1. userProvided -- explicitly given by the user.
-//  2. contentDisposition -- extracted from the Content-Disposition header
-//     (supports filename* RFC 5987).
+//  2. probeFilename -- already-extracted filename from the probe response
+//     (Content-Disposition or URL path, parsed by the probe layer).
 //  3. finalURL -- the last path segment of the URL after redirects.
 //  4. fallback -- "download_" + first 10 characters of a ULID.
-func DetectFilename(userProvided, contentDisposition, finalURL string) string {
+func DetectFilename(userProvided, probeFilename, finalURL string) string {
 	// 1. User-provided name takes the highest priority.
 	if name := strings.TrimSpace(userProvided); name != "" {
 		return sanitizeFilename(name)
 	}
 
-	// 2. Content-Disposition header.
-	if contentDisposition != "" {
-		if name := filenameFromContentDisposition(contentDisposition); name != "" {
-			return sanitizeFilename(name)
-		}
+	// 2. Probe-extracted filename (already parsed from Content-Disposition
+	// or URL by the probe layer — use directly, don't re-parse).
+	if name := strings.TrimSpace(probeFilename); name != "" {
+		return sanitizeFilename(name)
 	}
 
 	// 3. URL path.
