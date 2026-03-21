@@ -14,12 +14,17 @@ type StartFunc func(ctx context.Context, id string) error
 // PauseFn is a callback invoked when the queue needs to pause a download.
 type PauseFn func(ctx context.Context, id string) error
 
+// RequeueFn is a callback invoked when the queue needs to stop a download
+// and set it back to queued status (e.g. when max_concurrent is reduced).
+type RequeueFn func(ctx context.Context, id string) error
+
 // Manager implements a FIFO queue with configurable max concurrent downloads.
 type Manager struct {
 	store         *db.Store
 	maxConcurrent int
 	startFn       StartFunc
 	pauseFn       PauseFn
+	requeueFn     RequeueFn
 	onResumed     func(id string)
 
 	mu     sync.Mutex
@@ -27,12 +32,13 @@ type Manager struct {
 }
 
 // New creates a new queue Manager.
-func New(store *db.Store, maxConcurrent int, startFn StartFunc, pauseFn PauseFn, onResumed func(id string)) *Manager {
+func New(store *db.Store, maxConcurrent int, startFn StartFunc, pauseFn PauseFn, requeueFn RequeueFn, onResumed func(id string)) *Manager {
 	return &Manager{
 		store:         store,
 		maxConcurrent: maxConcurrent,
 		startFn:       startFn,
 		pauseFn:       pauseFn,
+		requeueFn:     requeueFn,
 		onResumed:     onResumed,
 		notify:        make(chan struct{}, 1),
 	}
@@ -135,8 +141,9 @@ func (m *Manager) SetMaxConcurrent(max int) {
 	m.signal()
 }
 
-// pauseExcess pauses active downloads that exceed the max concurrent limit.
-// It pauses downloads with the highest queue_order first (newest).
+// pauseExcess requeues active downloads that exceed the max concurrent limit.
+// It requeues downloads with the highest queue_order first (newest), so they
+// automatically resume when slots become available.
 func (m *Manager) pauseExcess(ctx context.Context) {
 	active, err := m.store.ListDownloads(ctx, string(model.StatusActive), 0, 0)
 	if err != nil {
@@ -154,7 +161,7 @@ func (m *Manager) pauseExcess(ctx context.Context) {
 	// ListDownloads returns sorted by queue_order ASC.
 	// Pause from the end (highest queue_order = newest).
 	for i := len(active) - 1; i >= 0 && excess > 0; i-- {
-		_ = m.pauseFn(ctx, active[i].ID)
+		_ = m.requeueFn(ctx, active[i].ID)
 		excess--
 	}
 }

@@ -70,6 +70,8 @@ func TestStress_ConcurrentQueuePressure(t *testing.T) {
 		return eng.StartDownload(ctx, id)
 	}, func(ctx context.Context, id string) error {
 		return eng.PauseDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return eng.RequeueDownload(ctx, id)
 	}, func(id string) {})
 
 	ctx, cancel := context.WithCancel(context.Background())

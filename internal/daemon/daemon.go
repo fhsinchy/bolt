@@ -67,6 +67,9 @@ func New(cfgPath, version string) (*Daemon, error) {
 		func(ctx context.Context, id string) error {
 			return eng.PauseDownload(ctx, id)
 		},
+		func(ctx context.Context, id string) error {
+			return eng.RequeueDownload(ctx, id)
+		},
 		svc.OnResumedCallback(),
 	)
 

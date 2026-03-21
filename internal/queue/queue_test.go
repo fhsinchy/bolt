@@ -57,8 +57,9 @@ func insertDownload(t *testing.T, store *db.Store, id string, order int, status 
 	}
 }
 
-func noopPauseFn(ctx context.Context, id string) error { return nil }
-func noopOnResumed(id string)                          {}
+func noopPauseFn(ctx context.Context, id string) error   { return nil }
+func noopRequeueFn(ctx context.Context, id string) error { return nil }
+func noopOnResumed(id string)                            {}
 
 // startFnThatSetsActive returns a startFn that sets download status to active
 // (mimicking what engine.StartDownload does) and records started IDs.
@@ -78,7 +79,7 @@ func TestQueue_MaxConcurrent(t *testing.T) {
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, 3, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
+	mgr := New(store, 3, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -114,7 +115,7 @@ func TestQueue_CompleteTriggersNext(t *testing.T) {
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -160,7 +161,7 @@ func TestQueue_EmptyQueue(t *testing.T) {
 		return nil
 	}
 
-	mgr := New(store, 3, startFn, noopPauseFn, noopOnResumed)
+	mgr := New(store, 3, startFn, noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -182,7 +183,7 @@ func TestMaxConcurrentChanged_MidFlight(t *testing.T) {
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -220,24 +221,24 @@ func TestMaxConcurrentChanged_MidFlight(t *testing.T) {
 	}
 }
 
-func TestSetMaxConcurrent_PausesExcess(t *testing.T) {
+func TestSetMaxConcurrent_RequeuesExcess(t *testing.T) {
 	store := openTestStore(t)
 
 	var mu sync.Mutex
-	paused := make([]string, 0)
+	requeued := make([]string, 0)
 
 	startFn := func(ctx context.Context, id string) error {
 		return nil
 	}
-	pauseFn := func(ctx context.Context, id string) error {
-		_ = store.UpdateDownloadStatus(ctx, id, model.StatusPaused, "")
+	requeueFn := func(ctx context.Context, id string) error {
+		_ = store.UpdateDownloadStatus(ctx, id, model.StatusQueued, "")
 		mu.Lock()
-		paused = append(paused, id)
+		requeued = append(requeued, id)
 		mu.Unlock()
 		return nil
 	}
 
-	mgr := New(store, 4, startFn, pauseFn, noopOnResumed)
+	mgr := New(store, 4, startFn, noopPauseFn, requeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -256,11 +257,11 @@ func TestSetMaxConcurrent_PausesExcess(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	mu.Lock()
-	pausedCount := len(paused)
+	requeuedCount := len(requeued)
 	mu.Unlock()
 
-	if pausedCount != 2 {
-		t.Errorf("expected 2 paused, got %d", pausedCount)
+	if requeuedCount != 2 {
+		t.Errorf("expected 2 requeued, got %d", requeuedCount)
 	}
 }
 
@@ -270,7 +271,7 @@ func TestEnqueueResume_RespectsLimit(t *testing.T) {
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, 1, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
+	mgr := New(store, 1, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -316,7 +317,7 @@ func TestEnqueueResumeAll(t *testing.T) {
 	var mu sync.Mutex
 	started := make([]string, 0)
 
-	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopOnResumed)
+	mgr := New(store, 2, startFnThatSetsActive(store, &mu, &started), noopPauseFn, noopRequeueFn, noopOnResumed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

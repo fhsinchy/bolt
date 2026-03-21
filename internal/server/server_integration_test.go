@@ -87,6 +87,8 @@ func startIntegrationServer(t *testing.T, opts ...integrationOpt) *integrationEn
 		return eng.StartDownload(ctx, id)
 	}, func(ctx context.Context, id string) error {
 		return eng.PauseDownload(ctx, id)
+	}, func(ctx context.Context, id string) error {
+		return eng.RequeueDownload(ctx, id)
 	}, svc.OnResumedCallback())
 
 	svc.SetEngine(eng)

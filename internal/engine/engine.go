@@ -379,6 +379,35 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 	return nil
 }
 
+// RequeueDownload stops an active download and sets its status to queued.
+// Unlike PauseDownload, this is for automatic queue management (e.g. when
+// max_concurrent is reduced) rather than explicit user action.
+func (e *Engine) RequeueDownload(ctx context.Context, id string) error {
+	e.mu.Lock()
+	ad, exists := e.active[id]
+	e.mu.Unlock()
+
+	if !exists {
+		return e.store.UpdateDownloadStatus(ctx, id, model.StatusQueued, "")
+	}
+
+	ad.cancel()
+	ad.wg.Wait()
+	ad.progress.persistProgress()
+
+	if err := e.store.UpdateDownloadStatus(ctx, id, model.StatusQueued, ""); err != nil {
+		return err
+	}
+
+	ad.file.Close()
+
+	e.mu.Lock()
+	delete(e.active, id)
+	e.mu.Unlock()
+
+	return nil
+}
+
 // PauseDownload cancels an active download and persists its state.
 func (e *Engine) PauseDownload(ctx context.Context, id string) error {
 	e.mu.Lock()
