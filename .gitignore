@@ -1,5 +1,6 @@
 # Build output
 /bolt
+/bolt-host
 /dist/
 *.exe
 *.exe~
@@ -32,6 +33,11 @@ config.json
 *.swp
 *.swo
 *~
+
+# AI tooling
+.claude/
+.superpowers/
+docs/
 
 # OS
 .DS_Store
