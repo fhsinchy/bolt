@@ -1,4 +1,4 @@
-.PHONY: build build-host test test-race test-v test-stress test-cover install uninstall clean \
+.PHONY: build build-host test test-race test-v test-stress test-cover install uninstall reinstall clean \
         build-qt test-qt build-all test-all
 
 # --- Daemon (Go) ---
@@ -73,6 +73,8 @@ uninstall:
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
 	-update-desktop-database ~/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
+
+reinstall: uninstall install
 
 clean:
 	rm -f $(BINARY)
