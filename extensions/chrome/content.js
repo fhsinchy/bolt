@@ -102,8 +102,9 @@ document.addEventListener("click", (e) => {
   if (!passesDomainFilter(url) || !passesExtensionFilter(url)) return;
 
   // preventDefault must be synchronous — no awaits before this point.
+  // Only preventDefault — do NOT stopPropagation, because the page's own
+  // click handlers still need to fire (e.g. Mediafire updates button UI).
   e.preventDefault();
-  e.stopPropagation();
 
   chrome.runtime.sendMessage({
     type: "download-link",
