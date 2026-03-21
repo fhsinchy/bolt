@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"os"
 	"sync"
 )
@@ -14,6 +13,7 @@ type host struct {
 	relay  *relay
 	stdout io.Writer
 	mu     *sync.Mutex
+	logger *logger
 }
 
 // run reads commands from r until EOF, relays each to the daemon, and writes
@@ -27,7 +27,7 @@ func (h *host) run(r io.Reader) {
 				return
 			}
 			// Truncated input, corrupt length prefix, oversized message, etc.
-			log.Printf("fatal read error: %v", err)
+			h.logger.Log("", "fatal read error: %v", err)
 			os.Exit(1)
 		}
 
@@ -41,13 +41,33 @@ func (h *host) run(r io.Reader) {
 			continue
 		}
 
-		resp, err := h.relay.execute(cmd)
+		traceID := extractTraceID(cmd.Data)
+
+		// Log command received
+		if cmd.Data != nil {
+			var urlData struct {
+				URL string `json:"url"`
+			}
+			_ = json.Unmarshal(*cmd.Data, &urlData)
+			h.logger.Log(traceID, "command=%s url=%s", cmd.Command, urlData.URL)
+		} else {
+			h.logger.Log(traceID, "command=%s", cmd.Command)
+		}
+
+		resp, statusCode, err := h.relay.execute(cmd)
 		if err != nil {
-			log.Printf("relay error: %v", err)
+			h.logger.Log(traceID, "relay error: %v", err)
 			resp = response{
 				Command: cmd.Command,
 				Success: false,
 				Error:   "internal_error",
+			}
+		} else {
+			method, path := commandRoute(cmd.Command)
+			if resp.Success {
+				h.logger.Log(traceID, "%s %s -> %d", method, path, statusCode)
+			} else {
+				h.logger.Log(traceID, "%s %s -> %d error: %s", method, path, statusCode, resp.Error)
 			}
 		}
 
@@ -58,7 +78,7 @@ func (h *host) run(r io.Reader) {
 func (h *host) writeResponse(resp response) {
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("marshal error: %v", err)
+		h.logger.Log("", "marshal error: %v", err)
 		return
 	}
 
@@ -66,6 +86,6 @@ func (h *host) writeResponse(resp response) {
 	defer h.mu.Unlock()
 
 	if err := writeMessage(h.stdout, data); err != nil {
-		log.Printf("write error: %v", err)
+		h.logger.Log("", "write error: %v", err)
 	}
 }

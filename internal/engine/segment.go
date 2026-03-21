@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -140,11 +141,22 @@ func (w *segmentWorker) RunWithRetry(ctx context.Context, maxRetries int) {
 		return
 	}
 
+	slog.Debug("segment start",
+		"id", w.download.ID, "trace", w.download.TraceID,
+		"seg", w.segment.Index,
+		"range", fmt.Sprintf("%d-%d", w.segment.StartByte, w.segment.EndByte),
+	)
+
 	backoff := 1 * time.Second
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		err := w.Run(ctx)
 		if err == nil {
+			slog.Debug("segment complete",
+				"id", w.download.ID, "trace", w.download.TraceID,
+				"seg", w.segment.Index,
+				"bytes", w.segment.Downloaded,
+			)
 			return
 		}
 
@@ -156,6 +168,13 @@ func (w *segmentWorker) RunWithRetry(ctx context.Context, maxRetries int) {
 			w.reportCh <- segmentReport{Index: w.segment.Index, Err: err}
 			return
 		}
+
+		slog.Debug("segment retry",
+			"id", w.download.ID, "trace", w.download.TraceID,
+			"seg", w.segment.Index,
+			"attempt", attempt+1,
+			"error", err.Error(),
+		)
 
 		if attempt < maxRetries {
 			select {

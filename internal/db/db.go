@@ -69,6 +69,7 @@ func (s *Store) migrate() error {
 
 	migrations := []func(tx *sql.Tx) error{
 		s.migrateV1,
+		s.migrateV2,
 	}
 
 	for i := version; i < len(migrations); i++ {
@@ -90,6 +91,12 @@ func (s *Store) migrate() error {
 	}
 
 	return nil
+}
+
+// migrateV2 adds the trace_id column for download pipeline tracing.
+func (s *Store) migrateV2(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE downloads ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''`)
+	return err
 }
 
 // migrateV1 creates the initial database schema.

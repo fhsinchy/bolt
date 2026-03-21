@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strconv"
@@ -17,16 +18,34 @@ import (
 // Content-Disposition, ETag, Last-Modified, Content-Type, and the final URL
 // after any redirects.
 func Probe(ctx context.Context, client *http.Client, rawURL string, headers map[string]string) (*model.ProbeResult, error) {
+	slog.Debug("probe start", "url", rawURL)
+
 	result, err := probeHEAD(ctx, client, rawURL, headers)
 	if err != nil {
 		return nil, err
 	}
 	if result != nil {
+		slog.Debug("probe result",
+			"url", rawURL, "method", "HEAD",
+			"resumable", result.AcceptsRanges,
+			"size", result.TotalSize,
+			"filename", result.Filename,
+		)
 		return result, nil
 	}
 
 	// HEAD returned 405 -- fall back to a ranged GET.
-	return probeGET(ctx, client, rawURL, headers)
+	result, err = probeGET(ctx, client, rawURL, headers)
+	if err != nil {
+		return nil, err
+	}
+	slog.Debug("probe result",
+		"url", rawURL, "method", "GET-fallback",
+		"resumable", result.AcceptsRanges,
+		"size", result.TotalSize,
+		"filename", result.Filename,
+	)
+	return result, nil
 }
 
 // probeHEAD performs a HEAD request. It returns (nil, nil) when the server

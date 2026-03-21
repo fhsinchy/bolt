@@ -27,12 +27,12 @@ func (s *Store) InsertDownload(ctx context.Context, d *model.Download) error {
 		INSERT INTO downloads (
 			id, url, filename, dir, total_size, downloaded, status,
 			segments, speed_limit, headers, referer_url, checksum,
-			etag, last_modified, error, queue_order
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			etag, last_modified, error, queue_order, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		d.ID, d.URL, d.Filename, d.Dir, d.TotalSize, d.Downloaded,
 		string(d.Status), d.SegmentCount, d.SpeedLimit, headersJSON,
 		d.RefererURL, checksumStr, d.ETag, d.LastModified, d.Error,
-		d.QueueOrder,
+		d.QueueOrder, d.TraceID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert download: %w", err)
@@ -59,12 +59,12 @@ func (s *Store) InsertDownloadWithSegments(ctx context.Context, d *model.Downloa
 		INSERT INTO downloads (
 			id, url, filename, dir, total_size, downloaded, status,
 			segments, speed_limit, headers, referer_url, checksum,
-			etag, last_modified, error, queue_order
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			etag, last_modified, error, queue_order, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		d.ID, d.URL, d.Filename, d.Dir, d.TotalSize, d.Downloaded,
 		string(d.Status), d.SegmentCount, d.SpeedLimit, headersJSON,
 		d.RefererURL, checksumStr, d.ETag, d.LastModified, d.Error,
-		d.QueueOrder,
+		d.QueueOrder, d.TraceID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert download: %w", err)
@@ -103,7 +103,7 @@ func (s *Store) GetDownload(ctx context.Context, id string) (*model.Download, er
 		SELECT id, url, filename, dir, total_size, downloaded, status,
 		       segments, speed_limit, headers, referer_url, checksum,
 		       etag, last_modified, error, created_at, completed_at,
-		       queue_order
+		       queue_order, trace_id
 		FROM downloads WHERE id = ?`, id)
 
 	d, err := scanDownload(row)
@@ -123,7 +123,7 @@ func (s *Store) ListDownloads(ctx context.Context, status string, limit, offset 
 		SELECT id, url, filename, dir, total_size, downloaded, status,
 		       segments, speed_limit, headers, referer_url, checksum,
 		       etag, last_modified, error, created_at, completed_at,
-		       queue_order
+		       queue_order, trace_id
 		FROM downloads`)
 
 	if status != "" {
@@ -230,7 +230,7 @@ func (s *Store) FindByFilename(ctx context.Context, filename, dir string) (*mode
 		SELECT id, url, filename, dir, total_size, downloaded, status,
 		       segments, speed_limit, headers, referer_url, checksum,
 		       etag, last_modified, error, created_at, completed_at,
-		       queue_order
+		       queue_order, trace_id
 		FROM downloads
 		WHERE filename = ? AND dir = ? AND status NOT IN ('completed')
 		ORDER BY created_at DESC
@@ -263,7 +263,7 @@ func (s *Store) GetNextQueued(ctx context.Context) (*model.Download, error) {
 		SELECT id, url, filename, dir, total_size, downloaded, status,
 		       segments, speed_limit, headers, referer_url, checksum,
 		       etag, last_modified, error, created_at, completed_at,
-		       queue_order
+		       queue_order, trace_id
 		FROM downloads
 		WHERE status = ?
 		ORDER BY queue_order ASC, created_at ASC
@@ -370,7 +370,7 @@ func scanDownloadFrom(s scanner) (*model.Download, error) {
 		&d.ID, &d.URL, &d.Filename, &d.Dir, &d.TotalSize, &d.Downloaded,
 		&statusStr, &d.SegmentCount, &d.SpeedLimit, &headersStr,
 		&d.RefererURL, &checksumStr, &d.ETag, &d.LastModified, &d.Error,
-		&createdAtStr, &completedStr, &d.QueueOrder,
+		&createdAtStr, &completedStr, &d.QueueOrder, &d.TraceID,
 	)
 	if err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/fhsinchy/bolt/internal/config"
@@ -228,6 +229,32 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR")
 		return
+	}
+
+	var attrs []any
+	if partial.MaxConcurrent != nil {
+		attrs = append(attrs, "max_concurrent", *partial.MaxConcurrent)
+	}
+	if partial.DefaultSegments != nil {
+		attrs = append(attrs, "default_segments", *partial.DefaultSegments)
+	}
+	if partial.GlobalSpeedLimit != nil {
+		attrs = append(attrs, "global_speed_limit", *partial.GlobalSpeedLimit)
+	}
+	if partial.Notifications != nil {
+		attrs = append(attrs, "notifications", *partial.Notifications)
+	}
+	if partial.DownloadDir != nil {
+		attrs = append(attrs, "download_dir", *partial.DownloadDir)
+	}
+	if partial.MaxRetries != nil {
+		attrs = append(attrs, "max_retries", *partial.MaxRetries)
+	}
+	if partial.MinSegmentSize != nil {
+		attrs = append(attrs, "min_segment_size", *partial.MinSegmentSize)
+	}
+	if len(attrs) > 0 {
+		slog.Info("config updated", attrs...)
 	}
 
 	if partial.MaxConcurrent != nil {

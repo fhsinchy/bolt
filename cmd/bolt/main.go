@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +37,10 @@ func main() {
 }
 
 func startDaemon() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
+
 	d, err := daemon.New(config.DefaultPath(), version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

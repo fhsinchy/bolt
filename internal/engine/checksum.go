@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -27,6 +28,8 @@ func verifyChecksum(filePath string, cs *model.Checksum) error {
 	if cs == nil {
 		return nil
 	}
+
+	slog.Debug("checksum verify start", "file", filePath, "algo", cs.Algorithm)
 
 	algo := normalizeAlgorithm(cs.Algorithm)
 
@@ -60,6 +63,8 @@ func verifyChecksum(filePath string, cs *model.Checksum) error {
 	if actual != expected {
 		return fmt.Errorf("checksum mismatch (%s): got %s, want %s", algo, actual, expected)
 	}
+
+	slog.Debug("checksum verify pass", "file", filePath, "algo", cs.Algorithm)
 
 	return nil
 }

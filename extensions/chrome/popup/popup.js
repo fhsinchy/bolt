@@ -70,6 +70,17 @@ captureToggle.addEventListener("change", () => {
   chrome.storage.local.set({ captureEnabled: captureToggle.checked });
 });
 
+// Debug toggle
+const debugToggle = document.getElementById("debug-toggle");
+
+chrome.storage.local.get({ debugLogging: false }, (s) => {
+  debugToggle.checked = s.debugLogging;
+});
+
+debugToggle.addEventListener("change", (e) => {
+  chrome.storage.local.set({ debugLogging: e.target.checked });
+});
+
 saveBtn.addEventListener("click", () => {
   const sizeBytes = (parseInt(minSize.value, 10) || 0) * parseInt(sizeUnit.value, 10);
   chrome.storage.local.set({

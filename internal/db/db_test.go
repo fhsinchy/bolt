@@ -81,8 +81,8 @@ func TestMigration_UserVersion(t *testing.T) {
 	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("user_version = %d, want 1", version)
+	if version != 2 {
+		t.Errorf("user_version = %d, want 2", version)
 	}
 }
 
@@ -106,8 +106,8 @@ func TestMigration_Idempotent(t *testing.T) {
 	if err := store2.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("user_version = %d after re-open, want 1", version)
+	if version != 2 {
+		t.Errorf("user_version = %d after re-open, want 2", version)
 	}
 }
 

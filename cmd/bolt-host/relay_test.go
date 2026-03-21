@@ -41,7 +41,7 @@ func TestRelayPing(t *testing.T) {
 	_, sockPath := newTestServer(t, handler)
 
 	r := newRelay(sockPath)
-	resp, err := r.execute(command{Command: "ping"})
+	resp, _, err := r.execute(command{Command: "ping"})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestRelayAddDownload(t *testing.T) {
 
 	r := newRelay(sockPath)
 	data := json.RawMessage(`{"url":"https://example.com/file.zip"}`)
-	resp, err := r.execute(command{Command: "add_download", Data: &data})
+	resp, _, err := r.execute(command{Command: "add_download", Data: &data})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestRelayAddDownload(t *testing.T) {
 func TestRelayDaemonUnavailable(t *testing.T) {
 	sockPath := filepath.Join(t.TempDir(), "nonexistent.sock")
 	r := newRelay(sockPath)
-	resp, err := r.execute(command{Command: "ping"})
+	resp, _, err := r.execute(command{Command: "ping"})
 	if err != nil {
 		t.Fatalf("execute should not return error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRelayDaemonError(t *testing.T) {
 
 	r := newRelay(sockPath)
 	data := json.RawMessage(`{"url":"https://example.com/dup.zip"}`)
-	resp, err := r.execute(command{Command: "add_download", Data: &data})
+	resp, _, err := r.execute(command{Command: "add_download", Data: &data})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRelayUnknownCommand(t *testing.T) {
 	// Unknown commands should fail without hitting the daemon
 	sockPath := filepath.Join(t.TempDir(), "nonexistent.sock")
 	r := newRelay(sockPath)
-	resp, err := r.execute(command{Command: "bogus"})
+	resp, _, err := r.execute(command{Command: "bogus"})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestRelayProbe(t *testing.T) {
 
 	r := newRelay(sockPath)
 	data := json.RawMessage(`{"url":"https://example.com/file.zip"}`)
-	resp, err := r.execute(command{Command: "probe", Data: &data})
+	resp, _, err := r.execute(command{Command: "probe", Data: &data})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}

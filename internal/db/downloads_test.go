@@ -27,6 +27,7 @@ func newTestDownload(id string) *model.Download {
 		LastModified: "Mon, 01 Jan 2024 00:00:00 GMT",
 		Error:        "",
 		QueueOrder:   1,
+		TraceID:      "ext-abc123",
 	}
 }
 
@@ -73,6 +74,9 @@ func TestInsertAndGetDownload(t *testing.T) {
 	}
 	if got.QueueOrder != d.QueueOrder {
 		t.Errorf("QueueOrder = %d, want %d", got.QueueOrder, d.QueueOrder)
+	}
+	if got.TraceID != d.TraceID {
+		t.Errorf("TraceID = %q, want %q", got.TraceID, d.TraceID)
 	}
 }
 

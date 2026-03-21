@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/fhsinchy/bolt/internal/db"
@@ -82,6 +83,9 @@ func (m *Manager) evaluate(ctx context.Context) {
 			return
 		}
 
+		queued, _ := m.store.CountByStatus(ctx, model.StatusQueued)
+		slog.Debug("queue start", "id", dl.ID, "active", activeCount, "max", m.maxConcurrent, "queued", queued)
+
 		if err := m.startFn(ctx, dl.ID); err != nil {
 			// If start fails, mark as error and try the next one
 			_ = m.store.UpdateDownloadStatus(ctx, dl.ID, model.StatusError, err.Error())
@@ -161,6 +165,7 @@ func (m *Manager) pauseExcess(ctx context.Context) {
 	// ListDownloads returns sorted by queue_order ASC.
 	// Pause from the end (highest queue_order = newest).
 	for i := len(active) - 1; i >= 0 && excess > 0; i-- {
+		slog.Debug("queue requeue excess", "id", active[i].ID, "excess", excess)
 		_ = m.requeueFn(ctx, active[i].ID)
 		excess--
 	}

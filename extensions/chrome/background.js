@@ -9,6 +9,18 @@ let nextId = 1;
 let failureNotified = false;
 let reinitiatedUrls = new Set();
 
+function generateTraceID() {
+  const bytes = new Uint8Array(3);
+  crypto.getRandomValues(bytes);
+  return "ext-" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function debugLog(...args) {
+  if (cachedSettings.debugLogging) {
+    console.log("[bolt]", ...args);
+  }
+}
+
 // --- Port management ---
 
 // Serializes port initialization. Only one ensurePort() runs at a time;
@@ -49,6 +61,7 @@ function _initPort() {
     }
 
     port.onDisconnect.addListener(() => {
+      debugLog("bolt-host port disconnected", chrome.runtime.lastError?.message);
       connectionState = "host_unavailable";
       port = null;
       // Reject all pending callbacks
@@ -98,6 +111,7 @@ function sendCommand(cmd) {
 
     const timer = setTimeout(() => {
       pendingCallbacks.delete(id);
+      debugLog("bolt-host timeout", "trace=" + id);
       resolve(null); // treat timeout as failure
     }, COMMAND_TIMEOUT_MS);
 
@@ -137,23 +151,29 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const url = info.linkUrl;
   if (!url) return;
 
+  const traceID = generateTraceID();
+  debugLog("context menu download", url, "trace=" + traceID);
+
   const headers = await collectHeaders(url, tab?.url);
 
   const resp = await sendWithConnectionFast({
     command: "add_download",
-    data: { url, headers, referer_url: tab?.url || "" },
+    data: { url, headers, referer_url: tab?.url || "", trace_id: traceID },
   });
 
   if (resp && resp.success) {
     const filename = resp.data?.download?.filename || url.split("/").pop();
+    debugLog("download handed off successfully", "trace=" + traceID);
     showNotification("Sent to Bolt", filename);
   } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
     // Bolt is genuinely unreachable — fall back to browser download
+    debugLog("bolt unavailable, falling back to browser", url);
     reinitiatedUrls.add(url);
     chrome.downloads.download({ url });
     showNotification("Bolt unavailable", "Downloading normally");
   } else {
     // Daemon rejected the request (e.g. duplicate_filename) — surface the error, don't bypass
+    debugLog("daemon rejected", resp.error, url, "trace=" + traceID);
     showNotification("Download rejected", resp.error || "Unknown error");
   }
 });
@@ -162,6 +182,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 let cachedSettings = {
   captureEnabled: false,
+  debugLogging: false,
   minFileSize: 0,
   extensionWhitelist: [],
   extensionBlacklist: [],
@@ -194,10 +215,19 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     return;
   }
 
-  if (!cachedSettings.captureEnabled) return;
+  if (!cachedSettings.captureEnabled) {
+    debugLog("capture disabled, skipping", url);
+    return;
+  }
 
   // Apply filters
-  if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) return;
+  if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) {
+    debugLog("filtered out", url);
+    return;
+  }
+
+  const traceID = generateTraceID();
+  debugLog("capturing download", url, "trace=" + traceID);
 
   const headers = await collectHeaders(url, downloadItem.referrer);
 
@@ -208,26 +238,31 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
       headers,
       referer_url: downloadItem.referrer || "",
       filename: downloadItem.filename || "",  // daemon's AddRequest accepts filename as a hint
+      trace_id: traceID,
     },
   });
 
   if (resp && resp.success) {
+    debugLog("download handed off successfully", "trace=" + traceID);
     // Bolt accepted — cancel the browser's download to avoid duplicates.
     // Best-effort: if cancel fails (already completed, etc.), no harm done.
     try {
       await chrome.downloads.cancel(downloadItem.id);
       chrome.downloads.erase({ id: downloadItem.id });
     } catch {
+      debugLog("cancel failed for browser download", downloadItem.id);
       /* cancel/erase is best-effort */
     }
   } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
     // Bolt is genuinely unreachable — let the browser download continue as-is
+    debugLog("bolt unavailable, falling back to browser", url);
     if (!failureNotified) {
       showNotification("Bolt unavailable", "Downloading normally");
       failureNotified = true;
     }
   } else {
     // Daemon rejected the request — surface the error, let browser download continue
+    debugLog("daemon rejected", resp.error, url, "trace=" + traceID);
     showNotification("Download rejected", resp.error || "Unknown error");
   }
 });
@@ -249,6 +284,7 @@ function sendCommandWithTimeout(cmd, timeoutMs) {
 
     const timer = setTimeout(() => {
       pendingCallbacks.delete(id);
+      debugLog("bolt-host timeout", "trace=" + id);
       resolve(null);
     }, timeoutMs);
 
@@ -276,8 +312,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "download-link") return;
 
   (async () => {
+    const traceID = generateTraceID();
+    debugLog("link click download", msg.url, "trace=" + traceID);
+
     // Apply the same filters as automatic capture
     if (!passesFilters(msg.url, 0, cachedSettings)) {
+      debugLog("filtered out", msg.url, "trace=" + traceID);
       // Filtered out — let the browser handle it normally
       chrome.downloads.download({ url: msg.url });
       sendResponse({ ok: true });
@@ -286,20 +326,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     const headers = await collectHeaders(msg.url, msg.pageUrl);
 
-    const resp = await sendWithConnectionFast({
+    const resp = await sendWithConnection({
       command: "add_download",
-      data: { url: msg.url, headers, referer_url: msg.pageUrl || "" },
+      data: { url: msg.url, headers, referer_url: msg.pageUrl || "", trace_id: traceID },
     });
 
     if (resp && resp.success) {
       const filename =
         resp.data?.download?.filename || msg.url.split("/").pop();
+      debugLog("download handed off successfully", "trace=" + traceID);
       showNotification("Sent to Bolt", filename);
     } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
+      debugLog("bolt unavailable, falling back to browser", msg.url);
       reinitiatedUrls.add(msg.url);
       chrome.downloads.download({ url: msg.url });
       showNotification("Bolt unavailable", "Downloading normally");
     } else {
+      debugLog("daemon rejected", resp.error, msg.url, "trace=" + traceID);
       showNotification("Download rejected", resp.error || "Unknown error");
     }
 

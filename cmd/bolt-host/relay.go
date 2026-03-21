@@ -46,9 +46,35 @@ func newRelay(socketPath string) *relay {
 	}
 }
 
+// extractTraceID extracts the trace_id field from raw JSON data.
+// Returns empty string if data is nil or trace_id is not present.
+func extractTraceID(data *json.RawMessage) string {
+	if data == nil {
+		return ""
+	}
+	var t struct {
+		TraceID string `json:"trace_id"`
+	}
+	_ = json.Unmarshal(*data, &t)
+	return t.TraceID
+}
+
+func commandRoute(cmd string) (string, string) {
+	switch cmd {
+	case "ping":
+		return "GET", "/api/stats"
+	case "add_download":
+		return "POST", "/api/downloads"
+	case "probe":
+		return "POST", "/api/probe"
+	default:
+		return "POST", "/unknown"
+	}
+}
+
 // execute dispatches a command to the daemon and returns a response.
 // The request ID is echoed in every response for client-side correlation.
-func (r *relay) execute(cmd command) (response, error) {
+func (r *relay) execute(cmd command) (response, int, error) {
 	switch cmd.Command {
 	case "ping":
 		return r.doRequest(cmd, http.MethodGet, "/api/stats", nil)
@@ -62,11 +88,11 @@ func (r *relay) execute(cmd command) (response, error) {
 			Command: cmd.Command,
 			Success: false,
 			Error:   "unknown_command",
-		}, nil
+		}, 0, nil
 	}
 }
 
-func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessage) (response, error) {
+func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessage) (response, int, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(*body)
@@ -74,7 +100,7 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 
 	req, err := http.NewRequest(method, "http://localhost"+path, bodyReader)
 	if err != nil {
-		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "internal_error"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "internal_error"}, 0, nil
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -87,16 +113,16 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			errCode = "timeout"
 		}
-		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: errCode}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: errCode}, 0, nil
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxMessageSize+1))
 	if err != nil {
-		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "read_error"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "read_error"}, resp.StatusCode, nil
 	}
 	if len(respBody) > maxMessageSize {
-		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "response_too_large"}, nil
+		return response{ID: cmd.ID, Command: cmd.Command, Success: false, Error: "response_too_large"}, resp.StatusCode, nil
 	}
 
 	data := json.RawMessage(respBody)
@@ -107,7 +133,7 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 			Command: cmd.Command,
 			Success: true,
 			Data:    &data,
-		}, nil
+		}, resp.StatusCode, nil
 	}
 
 	// Extract error code from daemon response
@@ -127,5 +153,5 @@ func (r *relay) doRequest(cmd command, method, path string, body *json.RawMessag
 		Success: false,
 		Error:   errCode,
 		Data:    &data,
-	}, nil
+	}, resp.StatusCode, nil
 }

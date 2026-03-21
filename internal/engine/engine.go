@@ -128,6 +128,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 
 	// Detect filename
 	filename := DetectFilename(req.Filename, probeResult.Filename, probeResult.FinalURL)
+	slog.Debug("filename detected", "filename", filename, "url", req.URL)
 
 	// Determine directory
 	dir := req.Dir
@@ -207,6 +208,7 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 		SpeedLimit:   req.SpeedLimit,
 		Headers:      req.Headers,
 		RefererURL:   refererURL,
+		TraceID:      req.TraceID,
 		Checksum:     req.Checksum,
 		ETag:         probeResult.ETag,
 		LastModified: probeResult.LastModified,
@@ -219,6 +221,13 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	if err := e.store.InsertDownloadWithSegments(ctx, dl, segments); err != nil {
 		return nil, fmt.Errorf("inserting download: %w", err)
 	}
+
+	slog.Info("download added",
+		"id", dl.ID, "trace", dl.TraceID,
+		"url", dl.URL, "referer_url", dl.RefererURL,
+		"filename", dl.Filename, "size", dl.TotalSize,
+		"segments", dl.SegmentCount,
+	)
 
 	if e.callbacks != nil && e.callbacks.OnAdded != nil {
 		e.callbacks.OnAdded(*dl)
@@ -279,7 +288,7 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 	if e.callbacks != nil {
 		onProgress = e.callbacks.OnProgress
 	}
-	agg := newProgressAggregator(dl.ID, dl.TotalSize, segments, reportCh, onProgress, e.store)
+	agg := newProgressAggregator(dl.ID, dl.TraceID, dl.RefererURL, dl.TotalSize, segments, reportCh, onProgress, e.store)
 
 	ad := &activeDownload{
 		download:   dl,
@@ -336,6 +345,11 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 				_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusVerifying, "")
 				if err := verifyChecksum(filePath, dl.Checksum); err != nil {
 					_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, err.Error())
+					slog.Info("download failed",
+						"id", dl.ID, "trace", dl.TraceID,
+						"referer_url", dl.RefererURL,
+						"error", err.Error(),
+					)
 					if e.callbacks != nil && e.callbacks.OnFailed != nil {
 						refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
 						if refreshed != nil {
@@ -344,6 +358,12 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 					}
 				} else {
 					_ = e.store.SetCompleted(context.Background(), dl.ID)
+					slog.Info("download completed",
+						"id", dl.ID, "trace", dl.TraceID,
+						"referer_url", dl.RefererURL,
+						"filename", dl.Filename, "size", dl.TotalSize,
+						"duration", time.Since(dl.CreatedAt).Round(time.Second).String(),
+					)
 					if e.callbacks != nil && e.callbacks.OnCompleted != nil {
 						refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
 						if refreshed != nil {
@@ -353,6 +373,12 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 				}
 			} else {
 				_ = e.store.SetCompleted(context.Background(), dl.ID)
+				slog.Info("download completed",
+					"id", dl.ID, "trace", dl.TraceID,
+					"referer_url", dl.RefererURL,
+					"filename", dl.Filename, "size", dl.TotalSize,
+					"duration", time.Since(dl.CreatedAt).Round(time.Second).String(),
+				)
 				if e.callbacks != nil && e.callbacks.OnCompleted != nil {
 					refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
 					if refreshed != nil {
@@ -363,6 +389,11 @@ func (e *Engine) startDownload(ctx context.Context, dl *model.Download, segments
 		} else if agg.Err() != nil {
 			aggErr := agg.Err()
 			_ = e.store.UpdateDownloadStatus(context.Background(), dl.ID, model.StatusError, aggErr.Error())
+			slog.Info("download failed",
+				"id", dl.ID, "trace", dl.TraceID,
+				"referer_url", dl.RefererURL,
+				"error", aggErr.Error(),
+			)
 			if e.callbacks != nil && e.callbacks.OnFailed != nil {
 				refreshed, _ := e.store.GetDownload(context.Background(), dl.ID)
 				if refreshed != nil {
@@ -388,7 +419,11 @@ func (e *Engine) RequeueDownload(ctx context.Context, id string) error {
 	e.mu.Unlock()
 
 	if !exists {
-		return e.store.UpdateDownloadStatus(ctx, id, model.StatusQueued, "")
+		if err := e.store.UpdateDownloadStatus(ctx, id, model.StatusQueued, ""); err != nil {
+			return err
+		}
+		slog.Info("download requeued", "id", id)
+		return nil
 	}
 
 	ad.cancel()
@@ -404,6 +439,8 @@ func (e *Engine) RequeueDownload(ctx context.Context, id string) error {
 	e.mu.Lock()
 	delete(e.active, id)
 	e.mu.Unlock()
+
+	slog.Info("download requeued", "id", id, "trace", ad.download.TraceID, "referer_url", ad.download.RefererURL)
 
 	return nil
 }
@@ -429,6 +466,7 @@ func (e *Engine) PauseDownload(ctx context.Context, id string) error {
 		if err := e.store.UpdateDownloadStatus(ctx, id, model.StatusPaused, ""); err != nil {
 			return err
 		}
+		slog.Info("download paused", "id", id, "trace", dl.TraceID, "referer_url", dl.RefererURL)
 		if e.callbacks != nil && e.callbacks.OnPaused != nil {
 			e.callbacks.OnPaused(id)
 		}
@@ -451,6 +489,8 @@ func (e *Engine) PauseDownload(ctx context.Context, id string) error {
 	e.mu.Lock()
 	delete(e.active, id)
 	e.mu.Unlock()
+
+	slog.Info("download paused", "id", id, "trace", ad.download.TraceID, "referer_url", ad.download.RefererURL)
 
 	if e.callbacks != nil && e.callbacks.OnPaused != nil {
 		e.callbacks.OnPaused(id)
@@ -515,6 +555,8 @@ func (e *Engine) CancelDownload(ctx context.Context, id string, deleteFile bool)
 		return err
 	}
 
+	slog.Info("download deleted", "id", id, "trace", dl.TraceID, "referer_url", dl.RefererURL)
+
 	if e.callbacks != nil && e.callbacks.OnRemoved != nil {
 		e.callbacks.OnRemoved(id)
 	}
@@ -549,6 +591,7 @@ func (e *Engine) ListDownloads(ctx context.Context, filter model.ListFilter) ([]
 // verification are also re-queued so they restart and re-verify.
 // The queue manager will start them according to the concurrency limit.
 func (e *Engine) Start(ctx context.Context) error {
+	var requeued int
 	for _, status := range []model.Status{model.StatusActive, model.StatusVerifying} {
 		downloads, err := e.store.ListDownloads(ctx, string(status), 0, 0)
 		if err != nil {
@@ -556,9 +599,12 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 		for i := range downloads {
 			_ = e.store.UpdateDownloadStatus(ctx, downloads[i].ID, model.StatusQueued, "")
+			requeued++
 		}
 	}
-
+	if requeued > 0 {
+		slog.Info("crash recovery", "requeued", requeued)
+	}
 	return nil
 }
 

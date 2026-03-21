@@ -246,6 +246,7 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 			})
 		},
 		OnResumed: func(id string) {
+			slog.Info("download resumed", "id", id)
 			s.broadcastEvent("resumed", map[string]any{
 				"id": id,
 			})

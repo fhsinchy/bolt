@@ -24,12 +24,14 @@ func main() {
 
 	sock := socketPath()
 	r := newRelay(sock)
+	l := newLogger()
 
 	var mu sync.Mutex
 	h := &host{
 		relay:  r,
 		stdout: os.Stdout,
 		mu:     &mu,
+		logger: l,
 	}
 	h.run(os.Stdin)
 }

@@ -139,6 +139,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	slog.Info("daemon ready",
 		"socket", d.sockPath,
+		"download_dir", d.cfg.DownloadDir,
+		"max_concurrent", d.cfg.MaxConcurrent,
+		"default_segments", d.cfg.DefaultSegments,
 	)
 
 	// 7. Block until signal or listener failure

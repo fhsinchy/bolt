@@ -26,6 +26,7 @@ type Download struct {
 	SpeedLimit   int64             `json:"speed_limit"`
 	Headers      map[string]string `json:"headers"`
 	RefererURL   string            `json:"referer_url"`
+	TraceID      string            `json:"trace_id"`
 	Checksum     *Checksum         `json:"checksum"`
 	Error        string            `json:"error"`
 	ETag         string            `json:"etag"`
@@ -82,6 +83,7 @@ type AddRequest struct {
 	Segments   int               `json:"segments"`
 	Headers    map[string]string `json:"headers"`
 	RefererURL string            `json:"referer_url"`
+	TraceID    string            `json:"trace_id"`
 	SpeedLimit int64             `json:"speed_limit"`
 	Checksum   *Checksum         `json:"checksum"`
 	Force      bool              `json:"force"`

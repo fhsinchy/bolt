@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/fhsinchy/bolt/internal/model"
 )
@@ -44,6 +45,12 @@ func (e *Engine) RefreshURL(ctx context.Context, id string, newURL string, heade
 	if err := e.store.UpdateDownloadURL(ctx, id, result.FinalURL, probeHeaders); err != nil {
 		return fmt.Errorf("updating URL: %w", err)
 	}
+
+	slog.Info("url refreshed",
+		"id", id, "trace", dl.TraceID,
+		"referer_url", dl.RefererURL,
+		"old_url", dl.URL, "new_url", result.FinalURL,
+	)
 
 	// If it was in error/refresh state, set to paused so user can resume
 	if dl.Status == model.StatusError || dl.Status == model.StatusRefresh {

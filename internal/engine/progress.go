@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 
 type progressAggregator struct {
 	downloadID string
+	traceID    string
+	refererURL string
 	totalSize  int64
 	segInfos   []segInfo // immutable start/end info per segment
 	reportCh   <-chan segmentReport
@@ -41,7 +44,7 @@ const (
 	speedWindowSize      = 5
 )
 
-func newProgressAggregator(downloadID string, totalSize int64, segments []model.Segment, reportCh <-chan segmentReport, onProgress func(string, model.ProgressUpdate), store *db.Store) *progressAggregator {
+func newProgressAggregator(downloadID, traceID, refererURL string, totalSize int64, segments []model.Segment, reportCh <-chan segmentReport, onProgress func(string, model.ProgressUpdate), store *db.Store) *progressAggregator {
 	infos := make([]segInfo, len(segments))
 	downloaded := make([]int64, len(segments))
 	done := make([]bool, len(segments))
@@ -61,6 +64,8 @@ func newProgressAggregator(downloadID string, totalSize int64, segments []model.
 
 	return &progressAggregator{
 		downloadID:      downloadID,
+		traceID:         traceID,
+		refererURL:      refererURL,
 		totalSize:       totalSize,
 		segInfos:        infos,
 		reportCh:        reportCh,
@@ -228,6 +233,11 @@ func (p *progressAggregator) persistProgress() {
 	bgCtx := context.Background()
 	_ = p.store.BatchUpdateSegments(bgCtx, segs)
 	_ = p.store.UpdateDownloadProgress(bgCtx, p.downloadID, totalDl)
+
+	slog.Debug("progress persist",
+		"id", p.downloadID, "trace", p.traceID,
+		"downloaded", totalDl, "total", p.totalSize,
+	)
 }
 
 // AllDone returns true if all segments have completed.

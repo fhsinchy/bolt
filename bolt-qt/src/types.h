@@ -42,6 +42,7 @@ struct Download {
 
 struct AddRequest {
     QString url;
+    QString traceId = "gui-qt";
     QString filename;
     QString dir;
     int segments = 0;
@@ -51,6 +52,7 @@ struct AddRequest {
     QJsonObject toJson() const {
         QJsonObject obj;
         obj["url"] = url;
+        obj["trace_id"] = traceId;
         if (!filename.isEmpty())
             obj["filename"] = filename;
         if (!dir.isEmpty())

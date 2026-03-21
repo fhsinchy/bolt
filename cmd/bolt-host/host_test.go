@@ -85,6 +85,7 @@ func TestHostEndToEnd(t *testing.T) {
 		relay:  newRelay(sockPath),
 		stdout: stdout,
 		mu:     &mu,
+		logger: &logger{path: filepath.Join(t.TempDir(), "test.log")},
 	}
 	h.run(stdin)
 
@@ -113,6 +114,7 @@ func TestHostDaemonDown(t *testing.T) {
 		relay:  newRelay(sockPath),
 		stdout: stdout,
 		mu:     &mu,
+		logger: &logger{path: filepath.Join(t.TempDir(), "test.log")},
 	}
 	h.run(stdin)
 

@@ -46,10 +46,17 @@ function isDownloadLink(url) {
 // Updated on storage changes and on initial load.
 let cachedSettings = {
   captureEnabled: false,
+  debugLogging: false,
   domainBlocklist: [],
   extensionWhitelist: [],
   extensionBlacklist: [],
 };
+
+function debugLog(...args) {
+  if (cachedSettings.debugLogging) {
+    console.log("[bolt]", ...args);
+  }
+}
 
 chrome.storage.local.get(cachedSettings, (s) => {
   Object.assign(cachedSettings, s);
@@ -95,16 +102,23 @@ document.addEventListener("click", (e) => {
   if (!link) return;
 
   const url = link.href;
-  if (!isDownloadLink(url)) return;
+  if (!isDownloadLink(url)) {
+    debugLog("click on non-download link", url);
+    return;
+  }
 
   // Check filters synchronously before preventing default — if filtered,
   // let the browser handle the click normally.
-  if (!passesDomainFilter(url) || !passesExtensionFilter(url)) return;
+  if (!passesDomainFilter(url) || !passesExtensionFilter(url)) {
+    debugLog("click filtered out", url);
+    return;
+  }
 
   // preventDefault must be synchronous — no awaits before this point.
   // Only preventDefault — do NOT stopPropagation, because the page's own
   // click handlers still need to fire (e.g. Mediafire updates button UI).
   e.preventDefault();
+  debugLog("click intercepted, sending to background", url);
 
   chrome.runtime.sendMessage({
     type: "download-link",
