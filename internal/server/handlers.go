@@ -316,6 +316,22 @@ func (s *Server) handleReorderDownloads(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (s *Server) handlePauseAll(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.PauseAll(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error(), "PAUSE_ALL_FAILED")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "paused"})
+}
+
+func (s *Server) handleResumeAll(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.ResumeAll(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error(), "RESUME_ALL_FAILED")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
+}
+
 // mapEngineError maps engine sentinel errors to HTTP status codes.
 func mapEngineError(w http.ResponseWriter, err error) {
 	switch {

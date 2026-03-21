@@ -312,7 +312,8 @@ void DaemonClient::handleResponse(int statusCode, const QByteArray &body, const 
     } else if (tag == "fetchStats") {
         Stats stats = Stats::fromJson(obj);
         emit statsFetched(stats);
-    } else if (tag == "pause" || tag == "resume" || tag == "retry" || tag == "delete") {
+    } else if (tag == "pause" || tag == "resume" || tag == "retry" || tag == "delete"
+               || tag == "pauseAll" || tag == "resumeAll") {
         // Action succeeded — refresh download list
         if (!m_pollInFlight)
             fetchDownloads();
@@ -354,6 +355,14 @@ void DaemonClient::resumeDownload(const QString &id) {
 
 void DaemonClient::retryDownload(const QString &id) {
     sendRequest("POST", "/api/downloads/" + id.toUtf8() + "/retry", {}, "retry");
+}
+
+void DaemonClient::pauseAll() {
+    sendRequest("POST", "/api/downloads/pause-all", {}, "pauseAll");
+}
+
+void DaemonClient::resumeAll() {
+    sendRequest("POST", "/api/downloads/resume-all", {}, "resumeAll");
 }
 
 void DaemonClient::probeUrl(const QString &url) {

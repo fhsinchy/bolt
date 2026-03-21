@@ -28,6 +28,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/downloads", s.handleAddDownload)
 	mux.HandleFunc("GET /api/downloads", s.handleListDownloads)
 	mux.HandleFunc("PUT /api/downloads/reorder", s.handleReorderDownloads)
+	mux.HandleFunc("POST /api/downloads/pause-all", s.handlePauseAll)
+	mux.HandleFunc("POST /api/downloads/resume-all", s.handleResumeAll)
 	mux.HandleFunc("GET /api/downloads/{id}", s.handleGetDownload)
 	mux.HandleFunc("DELETE /api/downloads/{id}", s.handleDeleteDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/pause", s.handlePauseDownload)

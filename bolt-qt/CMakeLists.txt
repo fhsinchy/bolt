@@ -23,6 +23,7 @@ add_executable(bolt-qt
     src/adddownloaddialog.cpp
     src/settingsdialog.h
     src/settingsdialog.cpp
+    resources.qrc
 )
 
 target_link_libraries(bolt-qt PRIVATE

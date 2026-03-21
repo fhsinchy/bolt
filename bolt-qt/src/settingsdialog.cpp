@@ -6,6 +6,8 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QSettings>
+#include <QSystemTrayIcon>
 #include <QVBoxLayout>
 
 SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
@@ -65,6 +67,21 @@ SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     m_notificationsCheck = new QCheckBox("Desktop notifications");
     form->addRow("", m_notificationsCheck);
 
+    // Minimize to tray (GUI-only setting, not sent to daemon)
+    m_minimizeToTrayCheck = new QCheckBox("Minimize to system tray on close");
+    form->addRow("", m_minimizeToTrayCheck);
+    auto *trayHint = new QLabel(
+        "<small>Downloads continue in the background even when the app is closed.</small>");
+    trayHint->setWordWrap(true);
+    trayHint->setTextFormat(Qt::RichText);
+    form->addRow("", trayHint);
+
+    // Hide if no system tray available
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        m_minimizeToTrayCheck->hide();
+        trayHint->hide();
+    }
+
     mainLayout->addLayout(form);
 
     // Error label
@@ -101,6 +118,10 @@ void SettingsDialog::onConfigFetched(Config cfg) {
     m_maxRetriesSpin->setValue(cfg.maxRetries);
     m_minSegmentSizeSpin->setValue(static_cast<double>(cfg.minSegmentSize) / (1024.0 * 1024.0));
     m_notificationsCheck->setChecked(cfg.notifications);
+
+    // Load GUI-local setting
+    QSettings guiSettings;
+    m_minimizeToTrayCheck->setChecked(guiSettings.value("minimizeToTray", true).toBool());
 }
 
 void SettingsDialog::onSave() {
@@ -139,6 +160,10 @@ void SettingsDialog::onSave() {
     bool notifications = m_notificationsCheck->isChecked();
     if (notifications != m_originalConfig.notifications)
         changes["notifications"] = notifications;
+
+    // Save GUI-local setting immediately (not sent to daemon)
+    QSettings guiSettings;
+    guiSettings.setValue("minimizeToTray", m_minimizeToTrayCheck->isChecked());
 
     if (changes.isEmpty()) {
         accept();

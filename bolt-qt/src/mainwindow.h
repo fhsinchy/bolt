@@ -7,7 +7,9 @@
 #include <QAction>
 #include <QLabel>
 #include <QMainWindow>
+#include <QMenu>
 #include <QPointer>
+#include <QSystemTrayIcon>
 #include <QTableView>
 
 class MainWindow : public QMainWindow {
@@ -33,10 +35,13 @@ private slots:
     void onRetry();
     void onDelete();
     void onSettings();
+    void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
 
 private:
     void setupToolbar();
     void setupStatusBar();
+    void setupTrayIcon();
+    void persistGeometry();
     void updateToolbarState();
     void updateEmptyState();
     void resizeEvent(QResizeEvent *event) override;
@@ -64,4 +69,8 @@ private:
 
     // Track open dialogs to prevent cross-talk
     QPointer<QDialog> m_activeDialog;
+
+    // System tray
+    QSystemTrayIcon *m_trayIcon = nullptr;
+    QMenu *m_trayMenu = nullptr;
 };

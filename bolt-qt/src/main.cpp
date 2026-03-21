@@ -8,6 +8,7 @@ int main(int argc, char *argv[]) {
     app.setApplicationName("bolt-qt");
     app.setOrganizationName("fhsinchy");
     app.setApplicationDisplayName("Bolt Download Manager");
+    app.setQuitOnLastWindowClosed(false);
 
     DaemonClient client;
     MainWindow window(&client);

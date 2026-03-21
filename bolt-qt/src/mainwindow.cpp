@@ -2,6 +2,7 @@
 #include "adddownloaddialog.h"
 #include "settingsdialog.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QDialog>
@@ -50,6 +51,7 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
 
     setupToolbar();
     setupStatusBar();
+    setupTrayIcon();
 
     // Connect client signals
     connect(m_client, &DaemonClient::connected, this, &MainWindow::onConnected);
@@ -69,9 +71,86 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    persistGeometry();
+
+    QSettings settings;
+    bool minimizeToTray = settings.value("minimizeToTray", true).toBool();
+
+    if (minimizeToTray && m_trayIcon) {
+        event->ignore();
+        hide();
+        return;
+    }
+
+    // setQuitOnLastWindowClosed is false, so we must quit explicitly
+    QApplication::quit();
+}
+
+void MainWindow::persistGeometry() {
     QSettings settings;
     settings.setValue("mainwindow/geometry", saveGeometry());
-    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::setupTrayIcon() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable())
+        return;
+
+    m_trayIcon = new QSystemTrayIcon(QIcon(":/tray-icon.png"), this);
+    m_trayMenu = new QMenu(this);
+
+    QAction *openAction = m_trayMenu->addAction("Open Bolt");
+    connect(openAction, &QAction::triggered, this, [this]() {
+        show();
+        raise();
+        activateWindow();
+    });
+
+    m_trayMenu->addSeparator();
+
+    QAction *pauseAllAction = m_trayMenu->addAction("Pause All");
+    connect(pauseAllAction, &QAction::triggered, this, [this]() {
+        if (m_client->isConnected())
+            m_client->pauseAll();
+    });
+
+    QAction *resumeAllAction = m_trayMenu->addAction("Resume All");
+    connect(resumeAllAction, &QAction::triggered, this, [this]() {
+        if (m_client->isConnected())
+            m_client->resumeAll();
+    });
+
+    m_trayMenu->addSeparator();
+
+    QAction *settingsAction = m_trayMenu->addAction("Settings");
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettings);
+
+    m_trayMenu->addSeparator();
+
+    QAction *quitAction = m_trayMenu->addAction("Quit");
+    connect(quitAction, &QAction::triggered, this, [this]() {
+        persistGeometry();
+        QApplication::quit();
+    });
+
+    m_trayIcon->setContextMenu(m_trayMenu);
+    m_trayIcon->setToolTip("Bolt Download Manager");
+
+    connect(m_trayIcon, &QSystemTrayIcon::activated,
+            this, &MainWindow::onTrayActivated);
+
+    m_trayIcon->show();
+}
+
+void MainWindow::onTrayActivated(QSystemTrayIcon::ActivationReason reason) {
+    if (reason == QSystemTrayIcon::Trigger) {
+        if (isVisible()) {
+            hide();
+        } else {
+            show();
+            raise();
+            activateWindow();
+        }
+    }
 }
 
 void MainWindow::setupToolbar() {
