@@ -48,6 +48,7 @@ struct AddRequest {
     int segments = 0;
     qint64 speedLimit = 0;
     bool force = false;
+    bool paused = false;
 
     QJsonObject toJson() const {
         QJsonObject obj;
@@ -63,6 +64,8 @@ struct AddRequest {
             obj["speed_limit"] = speedLimit;
         if (force)
             obj["force"] = true;
+        if (paused)
+            obj["paused"] = true;
         return obj;
     }
 };

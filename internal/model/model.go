@@ -87,6 +87,7 @@ type AddRequest struct {
 	SpeedLimit int64             `json:"speed_limit"`
 	Checksum   *Checksum         `json:"checksum"`
 	Force      bool              `json:"force"`
+	Paused     bool              `json:"paused"`
 }
 
 type ListFilter struct {

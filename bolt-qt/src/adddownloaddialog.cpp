@@ -22,7 +22,7 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     auto *urlLayout = new QHBoxLayout();
     m_urlEdit = new QLineEdit();
     m_urlEdit->setPlaceholderText("Enter URL...");
-    m_probeButton = new QPushButton("Probe");
+    m_probeButton = new QPushButton("Get Info");
     urlLayout->addWidget(m_urlEdit, 1);
     urlLayout->addWidget(m_probeButton);
 
@@ -31,7 +31,7 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     mainLayout->addLayout(urlForm);
 
     // Probe results group
-    auto *probeGroup = new QGroupBox("Probe Results");
+    auto *probeGroup = new QGroupBox("File Info");
     auto *probeLayout = new QFormLayout(probeGroup);
     m_filenameEdit = new QLineEdit();
     m_sizeLabel = new QLabel();
@@ -67,16 +67,25 @@ AddDownloadDialog::AddDownloadDialog(DaemonClient *client, QWidget *parent)
     auto *buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
     m_cancelButton = new QPushButton("Cancel");
+    m_downloadPausedButton = new QPushButton("Download Paused");
     m_downloadButton = new QPushButton("Download");
     m_downloadButton->setDefault(true);
     buttonLayout->addWidget(m_cancelButton);
+    buttonLayout->addWidget(m_downloadPausedButton);
     buttonLayout->addWidget(m_downloadButton);
     mainLayout->addLayout(buttonLayout);
 
     // Connections
     connect(m_probeButton, &QPushButton::clicked, this, &AddDownloadDialog::onProbe);
     connect(m_urlEdit, &QLineEdit::returnPressed, this, &AddDownloadDialog::onProbe);
-    connect(m_downloadButton, &QPushButton::clicked, this, &AddDownloadDialog::onDownload);
+    connect(m_downloadButton, &QPushButton::clicked, this, [this]() {
+        m_addPaused = false;
+        onDownload();
+    });
+    connect(m_downloadPausedButton, &QPushButton::clicked, this, [this]() {
+        m_addPaused = true;
+        onDownload();
+    });
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
     connect(browseButton, &QPushButton::clicked, this, [this]() {
         QString dir = QFileDialog::getExistingDirectory(this, "Select Directory", m_dirEdit->text());
@@ -114,13 +123,13 @@ void AddDownloadDialog::onProbe() {
     }
     m_errorLabel->hide();
     m_probeButton->setEnabled(false);
-    m_probeButton->setText("Probing...");
+    m_probeButton->setText("Fetching...");
     m_client->probeUrl(url);
 }
 
 void AddDownloadDialog::onProbeCompleted(ProbeResult result) {
     m_probeButton->setEnabled(true);
-    m_probeButton->setText("Probe");
+    m_probeButton->setText("Get Info");
     m_filenameEdit->setText(result.filename);
     m_sizeLabel->setText(formatBytes(result.totalSize));
     m_resumableLabel->setText(result.acceptsRanges ? "Yes" : "No");
@@ -129,7 +138,7 @@ void AddDownloadDialog::onProbeCompleted(ProbeResult result) {
 
 void AddDownloadDialog::onProbeFailed(QString error) {
     m_probeButton->setEnabled(true);
-    m_probeButton->setText("Probe");
+    m_probeButton->setText("Get Info");
     m_errorLabel->setText(error);
     m_errorLabel->show();
 }
@@ -150,9 +159,11 @@ void AddDownloadDialog::onDownload() {
     req.dir = m_dirEdit->text().trimmed();
     req.segments = m_segmentsSpin->value();
     req.force = m_force;
+    req.paused = m_addPaused;
 
     m_errorLabel->hide();
     m_downloadButton->setEnabled(false);
+    m_downloadPausedButton->setEnabled(false);
     m_client->addDownload(req);
 }
 
@@ -165,6 +176,7 @@ void AddDownloadDialog::onRequestFailed(QString endpoint, int, QString errorCode
         return;
 
     m_downloadButton->setEnabled(true);
+    m_downloadPausedButton->setEnabled(true);
 
     if (errorCode == "DUPLICATE_FILENAME") {
         auto reply = QMessageBox::question(this, "File Exists",
@@ -189,8 +201,9 @@ void AddDownloadDialog::onConfigFetched(Config cfg) {
 void AddDownloadDialog::onDisconnected() {
     // Re-enable buttons that may have been disabled by in-flight requests
     m_probeButton->setEnabled(true);
-    m_probeButton->setText("Probe");
+    m_probeButton->setText("Get Info");
     m_downloadButton->setEnabled(true);
+    m_downloadPausedButton->setEnabled(true);
     m_errorLabel->setText("Connection lost");
     m_errorLabel->show();
 }

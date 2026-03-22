@@ -37,7 +37,9 @@ private:
     QSpinBox *m_segmentsSpin;
     QLabel *m_errorLabel;
     QPushButton *m_downloadButton;
+    QPushButton *m_downloadPausedButton;
     QPushButton *m_cancelButton;
 
     bool m_force = false;
+    bool m_addPaused = false;
 };

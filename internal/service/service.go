@@ -60,7 +60,12 @@ func (s *Service) AddDownload(ctx context.Context, req model.AddRequest) (*model
 	if err != nil {
 		return nil, err
 	}
-	s.queue.Enqueue(dl.ID)
+	if req.Paused {
+		_ = s.store.UpdateDownloadStatus(ctx, dl.ID, model.StatusPaused, "")
+		dl.Status = model.StatusPaused
+	} else {
+		s.queue.Enqueue(dl.ID)
+	}
 	return dl, nil
 }
 
