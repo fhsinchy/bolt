@@ -31,6 +31,7 @@ public:
     void fetchConfig();
     void updateConfig(const QJsonObject &partial);
     void fetchStats();
+    void fetchDownloadDetail(const QString &id);
 
 signals:
     void connected();
@@ -42,6 +43,7 @@ signals:
     void configFetched(Config cfg);
     void configUpdated();
     void statsFetched(Stats stats);
+    void downloadDetailFetched(Download dl, QVector<Segment> segments);
     void requestFailed(QString endpoint, int statusCode, QString errorCode, QString errorMessage);
 
 private slots:

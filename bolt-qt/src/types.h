@@ -40,6 +40,26 @@ struct Download {
     }
 };
 
+struct Segment {
+    QString downloadId;
+    int index = 0;
+    qint64 startByte = 0;
+    qint64 endByte = 0;
+    qint64 downloaded = 0;
+    bool done = false;
+
+    static Segment fromJson(const QJsonObject &obj) {
+        Segment s;
+        s.downloadId = obj["download_id"].toString();
+        s.index = obj["index"].toInt();
+        s.startByte = obj["start_byte"].toInteger();
+        s.endByte = obj["end_byte"].toInteger();
+        s.downloaded = obj["downloaded"].toInteger();
+        s.done = obj["done"].toBool();
+        return s;
+    }
+};
+
 struct AddRequest {
     QString url;
     QString traceId = "gui-qt";

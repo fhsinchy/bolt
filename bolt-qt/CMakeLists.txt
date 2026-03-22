@@ -23,6 +23,8 @@ add_executable(bolt-qt
     src/adddownloaddialog.cpp
     src/settingsdialog.h
     src/settingsdialog.cpp
+    src/downloaddetaildialog.h
+    src/downloaddetaildialog.cpp
     resources.qrc
 )
 

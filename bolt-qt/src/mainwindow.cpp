@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "adddownloaddialog.h"
+#include "downloaddetaildialog.h"
 #include "settingsdialog.h"
 
 #include <QApplication>
@@ -78,6 +79,20 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
     // Selection changes
     connect(m_tableView->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::onSelectionChanged);
+
+    // Double-click to open detail dialog
+    connect(m_tableView, &QTableView::doubleClicked, this, [this](const QModelIndex &proxyIdx) {
+        if (m_activeDialog)
+            return;
+        QModelIndex srcIdx = m_proxyModel->mapToSource(proxyIdx);
+        QString id = m_model->downloadIdAt(srcIdx.row());
+        if (id.isEmpty())
+            return;
+        auto *dialog = new DownloadDetailDialog(id, m_client, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        m_activeDialog = dialog;
+        dialog->open();
+    });
 
     // Restore geometry
     QSettings settings;

@@ -312,6 +312,14 @@ void DaemonClient::handleResponse(int statusCode, const QByteArray &body, const 
     } else if (tag == "fetchStats") {
         Stats stats = Stats::fromJson(obj);
         emit statsFetched(stats);
+    } else if (tag == "fetchDetail") {
+        Download dl = Download::fromJson(obj["download"].toObject());
+        QJsonArray segArr = obj["segments"].toArray();
+        QVector<Segment> segments;
+        segments.reserve(segArr.size());
+        for (const QJsonValue &v : segArr)
+            segments.append(Segment::fromJson(v.toObject()));
+        emit downloadDetailFetched(dl, segments);
     } else if (tag == "pause" || tag == "resume" || tag == "retry" || tag == "delete"
                || tag == "pauseAll" || tag == "resumeAll" || tag == "reorder") {
         // Action succeeded — refresh download list
@@ -393,4 +401,8 @@ void DaemonClient::updateConfig(const QJsonObject &partial) {
 
 void DaemonClient::fetchStats() {
     sendRequest("GET", "/api/stats", {}, "fetchStats");
+}
+
+void DaemonClient::fetchDownloadDetail(const QString &id) {
+    sendRequest("GET", "/api/downloads/" + id.toUtf8(), {}, "fetchDetail");
 }
