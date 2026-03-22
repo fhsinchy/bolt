@@ -26,6 +26,7 @@ async function updateStatus() {
 // --- Settings ---
 
 async function loadSettings() {
+  // Defaults are seeded by background.js onInstalled — fallbacks here are just safety
   const s = await chrome.storage.local.get({
     captureEnabled: false,
     minFileSize: 0,

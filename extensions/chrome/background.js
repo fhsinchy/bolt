@@ -137,7 +137,21 @@ async function sendWithConnection(cmd) {
 
 // --- Context menu ---
 
+const DEFAULT_SETTINGS = {
+  captureEnabled: false,
+  debugLogging: false,
+  minFileSize: 10485760,  // 10 MB
+  extensionWhitelist: [],
+  extensionBlacklist: [],
+  domainBlocklist: [],
+};
+
 chrome.runtime.onInstalled.addListener(() => {
+  // Seed defaults into storage (won't overwrite existing values)
+  chrome.storage.local.get(DEFAULT_SETTINGS, (existing) => {
+    chrome.storage.local.set(existing);
+  });
+
   chrome.contextMenus.create({
     id: "download-with-bolt",
     title: "Download with Bolt",
@@ -180,16 +194,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Cached settings ---
 
-let cachedSettings = {
-  captureEnabled: false,
-  debugLogging: false,
-  minFileSize: 0,
-  extensionWhitelist: [],
-  extensionBlacklist: [],
-  domainBlocklist: [],
-};
+let cachedSettings = { ...DEFAULT_SETTINGS };
 
-chrome.storage.local.get(cachedSettings, (s) => {
+chrome.storage.local.get(DEFAULT_SETTINGS, (s) => {
   cachedSettings = s;
 });
 
