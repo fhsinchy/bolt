@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="images/banner.png" alt="Bolt — Fast, segmented download manager for Linux" width="600" />
-</p>
-
-<p align="center">
   <strong>Fast, segmented download manager daemon for Linux.</strong>
 </p>
 
