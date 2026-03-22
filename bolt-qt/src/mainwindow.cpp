@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QItemSelection>
+#include <QListWidget>
 #include <QResizeEvent>
 #include <QIcon>
 #include <QLabel>
@@ -183,6 +184,8 @@ void MainWindow::setupToolbar() {
     m_deleteAction = toolbar->addAction(QIcon::fromTheme("edit-delete"), "Delete");
     toolbar->addSeparator();
     m_settingsAction = toolbar->addAction(QIcon::fromTheme("configure"), "Settings");
+    m_reorderAction = toolbar->addAction(QIcon::fromTheme("view-sort-ascending"), "Reorder Queue");
+    m_reorderAction->setVisible(false);
 
     connect(m_addAction, &QAction::triggered, this, &MainWindow::onAddUrl);
     connect(m_pauseAction, &QAction::triggered, this, &MainWindow::onPause);
@@ -190,6 +193,7 @@ void MainWindow::setupToolbar() {
     connect(m_retryAction, &QAction::triggered, this, &MainWindow::onRetry);
     connect(m_deleteAction, &QAction::triggered, this, &MainWindow::onDelete);
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::onSettings);
+    connect(m_reorderAction, &QAction::triggered, this, &MainWindow::onReorder);
 }
 
 void MainWindow::setupStatusBar() {
@@ -413,6 +417,84 @@ void MainWindow::onSettings() {
     dialog->open();
 }
 
+void MainWindow::onReorder() {
+    if (!m_client->isConnected()) {
+        statusBar()->showMessage("Not connected to daemon", 5000);
+        return;
+    }
+
+    // Collect queued downloads from the source model
+    QVector<QPair<QString, QString>> queued; // id, filename
+    for (int i = 0; i < m_model->rowCount(); i++) {
+        const Download &dl = m_model->downloadAt(i);
+        if (dl.status == "queued")
+            queued.append({dl.id, dl.filename});
+    }
+
+    if (queued.isEmpty()) {
+        statusBar()->showMessage("No queued downloads to reorder", 3000);
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Reorder Queue");
+    dialog.setMinimumSize(400, 300);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->addWidget(new QLabel("Drag items or use buttons to reorder. Top item downloads first."));
+
+    auto *listWidget = new QListWidget();
+    listWidget->setDragDropMode(QAbstractItemView::InternalMove);
+    listWidget->setDefaultDropAction(Qt::MoveAction);
+    for (const auto &item : queued) {
+        auto *listItem = new QListWidgetItem(item.second);
+        listItem->setData(Qt::UserRole, item.first);
+        listWidget->addItem(listItem);
+    }
+    layout->addWidget(listWidget, 1);
+
+    // Move Up / Move Down buttons
+    auto *moveLayout = new QHBoxLayout();
+    auto *moveUpBtn = new QPushButton("Move Up");
+    auto *moveDownBtn = new QPushButton("Move Down");
+    moveLayout->addStretch();
+    moveLayout->addWidget(moveUpBtn);
+    moveLayout->addWidget(moveDownBtn);
+    moveLayout->addStretch();
+    layout->addLayout(moveLayout);
+
+    QObject::connect(moveUpBtn, &QPushButton::clicked, [listWidget]() {
+        int row = listWidget->currentRow();
+        if (row > 0) {
+            auto *item = listWidget->takeItem(row);
+            listWidget->insertItem(row - 1, item);
+            listWidget->setCurrentRow(row - 1);
+        }
+    });
+    QObject::connect(moveDownBtn, &QPushButton::clicked, [listWidget]() {
+        int row = listWidget->currentRow();
+        if (row >= 0 && row < listWidget->count() - 1) {
+            auto *item = listWidget->takeItem(row);
+            listWidget->insertItem(row + 1, item);
+            listWidget->setCurrentRow(row + 1);
+        }
+    });
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    layout->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    QStringList orderedIds;
+    for (int i = 0; i < listWidget->count(); i++)
+        orderedIds.append(listWidget->item(i)->data(Qt::UserRole).toString());
+
+    m_client->reorderDownloads(orderedIds);
+}
+
 void MainWindow::setupSidebar() {
     m_sidebar = new QTreeWidget();
     m_sidebar->setHeaderHidden(true);
@@ -494,6 +576,7 @@ void MainWindow::onCategoryChanged() {
         m_proxyModel->setTypeFilter(FileCategory::DiskImages);
     }
 
+    m_reorderAction->setVisible(key == "queued");
     updateEmptyState();
 }
 

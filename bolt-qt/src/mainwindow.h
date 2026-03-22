@@ -93,6 +93,7 @@ private slots:
     void onRetry();
     void onDelete();
     void onSettings();
+    void onReorder();
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
 
 private:
@@ -116,6 +117,7 @@ private:
     QAction *m_retryAction;
     QAction *m_deleteAction;
     QAction *m_settingsAction;
+    QAction *m_reorderAction;
 
     // Status bar labels
     QLabel *m_connectionLabel;

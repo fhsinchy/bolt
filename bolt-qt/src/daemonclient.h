@@ -26,6 +26,7 @@ public:
     void retryDownload(const QString &id);
     void pauseAll();
     void resumeAll();
+    void reorderDownloads(const QStringList &orderedIds);
     void probeUrl(const QString &url);
     void fetchConfig();
     void updateConfig(const QJsonObject &partial);
