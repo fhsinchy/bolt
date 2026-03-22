@@ -10,13 +10,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,34 +22,31 @@ jobs:
       - name: Build binaries
         env:
           TAG: ${{ github.ref_name }}
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
-          CGO_ENABLED=0 go build \
+          CGO_ENABLED=0 GOARCH=amd64 go build \
             -ldflags "-X main.version=$TAG" \
             -o bolt ./cmd/bolt/
-          CGO_ENABLED=0 go build \
+          CGO_ENABLED=0 GOARCH=amd64 go build \
             -ldflags "-X main.version=$TAG" \
             -o bolt-host ./cmd/bolt-host/
 
       - name: Package tarball
         env:
           TAG: ${{ github.ref_name }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
-          dir="bolt-linux-${GOARCH}"
+          dir="bolt-linux-amd64"
           mkdir -p "$dir"
           cp bolt bolt-host "$dir/"
           cp packaging/bolt.desktop packaging/bolt.service "$dir/"
           cp packaging/com.fhsinchy.bolt.json "$dir/"
-          cp images/icon.png "$dir/appicon.png"
+          cp images/appicon.png "$dir/appicon.png"
           tar czf "${dir}-${TAG}.tar.gz" "$dir/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tarball-${{ matrix.goarch }}
-          path: bolt-linux-${{ matrix.goarch }}-${{ github.ref_name }}.tar.gz
+          name: tarball
+          path: bolt-linux-amd64-${{ github.ref_name }}.tar.gz
 
   publish:
     needs: release
@@ -99,5 +89,4 @@ jobs:
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file changelog.md \
-            "bolt-linux-amd64-${TAG}.tar.gz" \
-            "bolt-linux-arm64-${TAG}.tar.gz"
+            "bolt-linux-amd64-${TAG}.tar.gz"
