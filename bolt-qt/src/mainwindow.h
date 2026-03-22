@@ -9,8 +9,66 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QPointer>
+#include <QSortFilterProxyModel>
+#include <QSplitter>
 #include <QSystemTrayIcon>
 #include <QTableView>
+#include <QTreeWidget>
+
+class DownloadFilterProxy : public QSortFilterProxyModel {
+    Q_OBJECT
+
+public:
+    enum FilterMode { All, ByStatus, ByType };
+
+    explicit DownloadFilterProxy(QObject *parent = nullptr)
+        : QSortFilterProxyModel(parent) {}
+
+    void setStatusFilter(const QStringList &statuses) {
+        beginFilterChange();
+        m_mode = ByStatus;
+        m_statuses = statuses;
+        endFilterChange();
+    }
+
+    void setTypeFilter(FileCategory category) {
+        beginFilterChange();
+        m_mode = ByType;
+        m_category = category;
+        endFilterChange();
+    }
+
+    void clearFilter() {
+        beginFilterChange();
+        m_mode = All;
+        endFilterChange();
+    }
+
+    bool isFiltered() const { return m_mode != All; }
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override {
+        Q_UNUSED(sourceParent)
+        auto *model = qobject_cast<DownloadListModel *>(sourceModel());
+        if (!model || sourceRow >= model->rowCount())
+            return true;
+        const Download &dl = model->downloadAt(sourceRow);
+        switch (m_mode) {
+        case All:
+            return true;
+        case ByStatus:
+            return m_statuses.contains(dl.status);
+        case ByType:
+            return categoryForFilename(dl.filename) == m_category;
+        }
+        return true;
+    }
+
+private:
+    FilterMode m_mode = All;
+    QStringList m_statuses;
+    FileCategory m_category = FileCategory::None;
+};
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -69,6 +127,15 @@ private:
 
     // Track open dialogs to prevent cross-talk
     QPointer<QDialog> m_activeDialog;
+
+    // Sidebar + proxy
+    QSplitter *m_splitter = nullptr;
+    QTreeWidget *m_sidebar = nullptr;
+    DownloadFilterProxy *m_proxyModel = nullptr;
+
+    void setupSidebar();
+    void onCategoryChanged();
+    void updateCategoryCounts(const QVector<Download> &downloads);
 
     // System tray
     QSystemTrayIcon *m_trayIcon = nullptr;

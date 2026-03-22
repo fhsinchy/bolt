@@ -171,3 +171,77 @@ inline QString statusDisplayText(const QString &status) {
     if (status == "verifying") return QStringLiteral("Verifying");
     return status;
 }
+
+enum class FileCategory {
+    None,
+    Compressed,
+    Documents,
+    Music,
+    Video,
+    Images,
+    Programs,
+    DiskImages,
+};
+
+inline FileCategory categoryForFilename(const QString &filename) {
+    QString lower = filename.toLower();
+
+    // Handle compound extensions first
+    if (lower.endsWith(".tar.gz") || lower.endsWith(".tar.bz2") || lower.endsWith(".tar.xz"))
+        return FileCategory::Compressed;
+
+    int dot = lower.lastIndexOf('.');
+    if (dot < 0)
+        return FileCategory::None;
+    QString ext = lower.mid(dot);
+
+    // Compressed
+    if (ext == ".zip" || ext == ".tgz" || ext == ".gz" || ext == ".bz2"
+        || ext == ".xz" || ext == ".7z" || ext == ".rar" || ext == ".tar")
+        return FileCategory::Compressed;
+
+    // Documents
+    if (ext == ".pdf" || ext == ".doc" || ext == ".docx" || ext == ".odt"
+        || ext == ".txt" || ext == ".epub" || ext == ".xlsx" || ext == ".pptx" || ext == ".csv")
+        return FileCategory::Documents;
+
+    // Music
+    if (ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav"
+        || ext == ".aac" || ext == ".opus" || ext == ".wma" || ext == ".m4a")
+        return FileCategory::Music;
+
+    // Video
+    if (ext == ".mp4" || ext == ".mkv" || ext == ".avi" || ext == ".webm"
+        || ext == ".mov" || ext == ".flv" || ext == ".wmv" || ext == ".m4v")
+        return FileCategory::Video;
+
+    // Images
+    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif"
+        || ext == ".webp" || ext == ".svg" || ext == ".bmp" || ext == ".ico" || ext == ".tiff")
+        return FileCategory::Images;
+
+    // Programs
+    if (ext == ".deb" || ext == ".rpm" || ext == ".appimage" || ext == ".flatpak"
+        || ext == ".snap" || ext == ".bin" || ext == ".run" || ext == ".sh"
+        || ext == ".exe" || ext == ".msi")
+        return FileCategory::Programs;
+
+    // Disk Images
+    if (ext == ".iso" || ext == ".img")
+        return FileCategory::DiskImages;
+
+    return FileCategory::None;
+}
+
+inline QString categoryDisplayName(FileCategory cat) {
+    switch (cat) {
+    case FileCategory::Compressed:  return QStringLiteral("Compressed");
+    case FileCategory::Documents:   return QStringLiteral("Documents");
+    case FileCategory::Music:       return QStringLiteral("Music");
+    case FileCategory::Video:       return QStringLiteral("Video");
+    case FileCategory::Images:      return QStringLiteral("Images");
+    case FileCategory::Programs:    return QStringLiteral("Programs");
+    case FileCategory::DiskImages:  return QStringLiteral("Disk Images");
+    default:                        return QString();
+    }
+}

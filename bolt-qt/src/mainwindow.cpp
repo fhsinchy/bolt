@@ -16,6 +16,7 @@
 #include <QSettings>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
 
 MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
@@ -28,8 +29,12 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
     setWindowTitle("Bolt Download Manager");
     resize(800, 500);
 
+    // Proxy model for filtering
+    m_proxyModel = new DownloadFilterProxy(this);
+    m_proxyModel->setSourceModel(m_model);
+
     // Table view setup
-    m_tableView->setModel(m_model);
+    m_tableView->setModel(m_proxyModel);
     m_tableView->setItemDelegateForColumn(DownloadListModel::ColProgress, m_progressDelegate);
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tableView->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -41,7 +46,17 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
     m_tableView->setColumnWidth(DownloadListModel::ColSpeed, 100);
     m_tableView->setColumnWidth(DownloadListModel::ColEta, 80);
 
-    setCentralWidget(m_tableView);
+    // Splitter: sidebar + table
+    m_splitter = new QSplitter(Qt::Horizontal, this);
+    setupSidebar();
+    m_splitter->addWidget(m_sidebar);
+    m_splitter->addWidget(m_tableView);
+    m_splitter->setStretchFactor(0, 0);
+    m_splitter->setStretchFactor(1, 1);
+    m_sidebar->setMinimumWidth(150);
+    m_sidebar->setMaximumWidth(250);
+
+    setCentralWidget(m_splitter);
 
     // Empty state label overlaid on table
     m_emptyLabel = new QLabel("No downloads yet. Click + to add one.", m_tableView);
@@ -66,6 +81,8 @@ MainWindow::MainWindow(DaemonClient *client, QWidget *parent)
     // Restore geometry
     QSettings settings;
     restoreGeometry(settings.value("mainwindow/geometry").toByteArray());
+    if (settings.contains("mainwindow/splitter"))
+        m_splitter->restoreState(settings.value("mainwindow/splitter").toByteArray());
 
     updateToolbarState();
 }
@@ -89,6 +106,8 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 void MainWindow::persistGeometry() {
     QSettings settings;
     settings.setValue("mainwindow/geometry", saveGeometry());
+    if (m_splitter)
+        settings.setValue("mainwindow/splitter", m_splitter->saveState());
 }
 
 void MainWindow::setupTrayIcon() {
@@ -196,18 +215,24 @@ void MainWindow::onDisconnected() {
 
 void MainWindow::onDownloadsFetched(const QVector<Download> &downloads) {
     // Save selection by ID before model update (survives resets)
-    QStringList selectedIds = m_model->selectedIds(
-        m_tableView->selectionModel()->selectedRows());
+    QModelIndexList proxySelected = m_tableView->selectionModel()->selectedRows();
+    QModelIndexList sourceSelected;
+    for (const QModelIndex &proxyIdx : proxySelected)
+        sourceSelected.append(m_proxyModel->mapToSource(proxyIdx));
+    QStringList selectedIds = m_model->selectedIds(sourceSelected);
 
     m_model->updateFromPoll(downloads);
 
     // Restore selection by ID
     if (!selectedIds.isEmpty()) {
         QItemSelection sel;
-        for (int row = 0; row < m_model->rowCount(); row++) {
-            if (selectedIds.contains(m_model->downloadIdAt(row))) {
-                sel.select(m_model->index(row, 0),
-                           m_model->index(row, DownloadListModel::ColCount - 1));
+        for (int srcRow = 0; srcRow < m_model->rowCount(); srcRow++) {
+            if (selectedIds.contains(m_model->downloadIdAt(srcRow))) {
+                QModelIndex proxyFirst = m_proxyModel->mapFromSource(m_model->index(srcRow, 0));
+                QModelIndex proxyLast = m_proxyModel->mapFromSource(
+                    m_model->index(srcRow, DownloadListModel::ColCount - 1));
+                if (proxyFirst.isValid())
+                    sel.select(proxyFirst, proxyLast);
             }
         }
         if (!sel.isEmpty())
@@ -232,6 +257,7 @@ void MainWindow::onDownloadsFetched(const QVector<Download> &downloads) {
     }
     m_totalSpeedLabel->setText(totalSpeed > 0.0 ? formatSpeed(totalSpeed) : QString());
 
+    updateCategoryCounts(downloads);
     updateEmptyState();
     updateToolbarState();
 }
@@ -251,8 +277,9 @@ void MainWindow::updateToolbarState() {
     bool hasPaused = false;
     bool hasError = false;
 
-    for (const QModelIndex &idx : selected) {
-        const Download &dl = m_model->downloadAt(idx.row());
+    for (const QModelIndex &proxyIdx : selected) {
+        QModelIndex srcIdx = m_proxyModel->mapToSource(proxyIdx);
+        const Download &dl = m_model->downloadAt(srcIdx.row());
         if (dl.status == "active") hasActive = true;
         if (dl.status == "paused") hasPaused = true;
         if (dl.status == "error") hasError = true;
@@ -265,9 +292,13 @@ void MainWindow::updateToolbarState() {
 }
 
 void MainWindow::updateEmptyState() {
-    bool empty = m_model->rowCount() == 0;
-    m_emptyLabel->setVisible(empty);
-    if (empty) {
+    bool proxyEmpty = m_proxyModel->rowCount() == 0;
+    m_emptyLabel->setVisible(proxyEmpty);
+    if (proxyEmpty) {
+        if (m_proxyModel->isFiltered() && m_model->rowCount() > 0)
+            m_emptyLabel->setText("No downloads in this category.");
+        else
+            m_emptyLabel->setText("No downloads yet. Click + to add one.");
         m_emptyLabel->setGeometry(m_tableView->viewport()->rect());
     }
 }
@@ -292,8 +323,9 @@ void MainWindow::onPause() {
         return;
     }
     QModelIndexList selected = m_tableView->selectionModel()->selectedRows();
-    for (const QModelIndex &idx : selected) {
-        const Download &dl = m_model->downloadAt(idx.row());
+    for (const QModelIndex &proxyIdx : selected) {
+        QModelIndex srcIdx = m_proxyModel->mapToSource(proxyIdx);
+        const Download &dl = m_model->downloadAt(srcIdx.row());
         if (dl.status == "active")
             m_client->pauseDownload(dl.id);
     }
@@ -305,8 +337,9 @@ void MainWindow::onResume() {
         return;
     }
     QModelIndexList selected = m_tableView->selectionModel()->selectedRows();
-    for (const QModelIndex &idx : selected) {
-        const Download &dl = m_model->downloadAt(idx.row());
+    for (const QModelIndex &proxyIdx : selected) {
+        QModelIndex srcIdx = m_proxyModel->mapToSource(proxyIdx);
+        const Download &dl = m_model->downloadAt(srcIdx.row());
         if (dl.status == "paused")
             m_client->resumeDownload(dl.id);
     }
@@ -318,8 +351,9 @@ void MainWindow::onRetry() {
         return;
     }
     QModelIndexList selected = m_tableView->selectionModel()->selectedRows();
-    for (const QModelIndex &idx : selected) {
-        const Download &dl = m_model->downloadAt(idx.row());
+    for (const QModelIndex &proxyIdx : selected) {
+        QModelIndex srcIdx = m_proxyModel->mapToSource(proxyIdx);
+        const Download &dl = m_model->downloadAt(srcIdx.row());
         if (dl.status == "error")
             m_client->retryDownload(dl.id);
     }
@@ -333,8 +367,12 @@ void MainWindow::onDelete() {
 
     // Capture IDs before the modal dialog — the model can poll and
     // reorder while the dialog is open, invalidating row indexes.
-    QStringList ids = m_model->selectedIds(
-        m_tableView->selectionModel()->selectedRows());
+    // Map proxy indices to source indices before extracting IDs
+    QModelIndexList proxySelected = m_tableView->selectionModel()->selectedRows();
+    QModelIndexList sourceSelected;
+    for (const QModelIndex &proxyIdx : proxySelected)
+        sourceSelected.append(m_proxyModel->mapToSource(proxyIdx));
+    QStringList ids = m_model->selectedIds(sourceSelected);
     if (ids.isEmpty())
         return;
 
@@ -373,4 +411,137 @@ void MainWindow::onSettings() {
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     m_activeDialog = dialog;
     dialog->open();
+}
+
+void MainWindow::setupSidebar() {
+    m_sidebar = new QTreeWidget();
+    m_sidebar->setHeaderHidden(true);
+    m_sidebar->setRootIsDecorated(false);
+    m_sidebar->setIndentation(16);
+
+    // Status section
+    auto *statusHeader = new QTreeWidgetItem(m_sidebar, {"Status"});
+    statusHeader->setFlags(Qt::ItemIsEnabled);
+    QFont boldFont = statusHeader->font(0);
+    boldFont.setBold(true);
+    statusHeader->setFont(0, boldFont);
+
+    auto addCategory = [](QTreeWidgetItem *parent, const QString &name, const QString &key) {
+        auto *item = new QTreeWidgetItem(parent, {name});
+        item->setData(0, Qt::UserRole, key);
+        item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        return item;
+    };
+
+    auto *allItem = addCategory(statusHeader, "All Downloads", "all");
+    addCategory(statusHeader, "Queued", "queued");
+    addCategory(statusHeader, "Unfinished", "unfinished");
+    addCategory(statusHeader, "Failed", "failed");
+    addCategory(statusHeader, "Finished", "finished");
+
+    // Type section
+    auto *typeHeader = new QTreeWidgetItem(m_sidebar, {"Types"});
+    typeHeader->setFlags(Qt::ItemIsEnabled);
+    typeHeader->setFont(0, boldFont);
+
+    addCategory(typeHeader, "Compressed", "compressed");
+    addCategory(typeHeader, "Documents", "documents");
+    addCategory(typeHeader, "Music", "music");
+    addCategory(typeHeader, "Video", "video");
+    addCategory(typeHeader, "Images", "images");
+    addCategory(typeHeader, "Programs", "programs");
+    addCategory(typeHeader, "Disk Images", "diskimages");
+
+    m_sidebar->expandAll();
+    m_sidebar->setCurrentItem(allItem);
+
+    connect(m_sidebar, &QTreeWidget::currentItemChanged,
+            this, [this]() { onCategoryChanged(); });
+}
+
+void MainWindow::onCategoryChanged() {
+    QTreeWidgetItem *item = m_sidebar->currentItem();
+    if (!item)
+        return;
+
+    QString key = item->data(0, Qt::UserRole).toString();
+    if (key.isEmpty())
+        return;
+
+    if (key == "all") {
+        m_proxyModel->clearFilter();
+    } else if (key == "queued") {
+        m_proxyModel->setStatusFilter({"queued"});
+    } else if (key == "unfinished") {
+        m_proxyModel->setStatusFilter({"active", "paused", "verifying"});
+    } else if (key == "failed") {
+        m_proxyModel->setStatusFilter({"error", "refresh"});
+    } else if (key == "finished") {
+        m_proxyModel->setStatusFilter({"completed"});
+    } else if (key == "compressed") {
+        m_proxyModel->setTypeFilter(FileCategory::Compressed);
+    } else if (key == "documents") {
+        m_proxyModel->setTypeFilter(FileCategory::Documents);
+    } else if (key == "music") {
+        m_proxyModel->setTypeFilter(FileCategory::Music);
+    } else if (key == "video") {
+        m_proxyModel->setTypeFilter(FileCategory::Video);
+    } else if (key == "images") {
+        m_proxyModel->setTypeFilter(FileCategory::Images);
+    } else if (key == "programs") {
+        m_proxyModel->setTypeFilter(FileCategory::Programs);
+    } else if (key == "diskimages") {
+        m_proxyModel->setTypeFilter(FileCategory::DiskImages);
+    }
+
+    updateEmptyState();
+}
+
+void MainWindow::updateCategoryCounts(const QVector<Download> &downloads) {
+    int allCount = downloads.size();
+    int queuedCount = 0, unfinishedCount = 0, failedCount = 0, finishedCount = 0;
+    int compressedCount = 0, documentsCount = 0, musicCount = 0, videoCount = 0;
+    int imagesCount = 0, programsCount = 0, diskImagesCount = 0;
+
+    for (const Download &dl : downloads) {
+        if (dl.status == "queued") queuedCount++;
+        else if (dl.status == "active" || dl.status == "paused" || dl.status == "verifying") unfinishedCount++;
+        else if (dl.status == "error" || dl.status == "refresh") failedCount++;
+        else if (dl.status == "completed") finishedCount++;
+
+        switch (categoryForFilename(dl.filename)) {
+        case FileCategory::Compressed:  compressedCount++; break;
+        case FileCategory::Documents:   documentsCount++; break;
+        case FileCategory::Music:       musicCount++; break;
+        case FileCategory::Video:       videoCount++; break;
+        case FileCategory::Images:      imagesCount++; break;
+        case FileCategory::Programs:    programsCount++; break;
+        case FileCategory::DiskImages:  diskImagesCount++; break;
+        default: break;
+        }
+    }
+
+    auto updateItem = [this](const QString &key, const QString &baseName, int count) {
+        QTreeWidgetItemIterator it(m_sidebar);
+        while (*it) {
+            if ((*it)->data(0, Qt::UserRole).toString() == key) {
+                (*it)->setText(0, QString("%1 (%2)").arg(baseName).arg(count));
+                break;
+            }
+            ++it;
+        }
+    };
+
+    updateItem("all", "All Downloads", allCount);
+    updateItem("queued", "Queued", queuedCount);
+    updateItem("unfinished", "Unfinished", unfinishedCount);
+    updateItem("failed", "Failed", failedCount);
+    updateItem("finished", "Finished", finishedCount);
+    updateItem("compressed", "Compressed", compressedCount);
+    updateItem("documents", "Documents", documentsCount);
+    updateItem("music", "Music", musicCount);
+    updateItem("video", "Video", videoCount);
+    updateItem("images", "Images", imagesCount);
+    updateItem("programs", "Programs", programsCount);
+    updateItem("diskimages", "Disk Images", diskImagesCount);
 }
