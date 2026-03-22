@@ -2,11 +2,24 @@
 #include "mainwindow.h"
 
 #include <QApplication>
-#include <QDir>
-#include <QLockFile>
-#include <QStandardPaths>
+#include <QLocalServer>
+#include <QLocalSocket>
 
-#include <cstdio>
+static const char *kSocketName = "bolt-qt-single-instance";
+
+// Try to signal the existing instance to raise its window.
+// Returns true if another instance is running.
+static bool signalExistingInstance() {
+    QLocalSocket socket;
+    socket.connectToServer(kSocketName);
+    if (socket.waitForConnected(500)) {
+        socket.write("raise");
+        socket.waitForBytesWritten(500);
+        socket.disconnectFromServer();
+        return true;
+    }
+    return false;
+}
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
@@ -15,22 +28,30 @@ int main(int argc, char *argv[]) {
     app.setApplicationDisplayName("Bolt Download Manager");
     app.setQuitOnLastWindowClosed(false);
 
-    // Single instance check
-    QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    if (runtimeDir.isEmpty())
-        runtimeDir = QDir::tempPath();
-    QString lockPath = runtimeDir + "/bolt/bolt-qt.lock";
-    QDir().mkpath(runtimeDir + "/bolt");
+    // Single instance check — if another instance is running, raise it and exit
+    if (signalExistingInstance())
+        return 0;
 
-    QLockFile lockFile(lockPath);
-    if (!lockFile.tryLock(100)) {
-        std::fputs("bolt-qt is already running.\n", stderr);
-        return 1;
-    }
+    // Clean up stale socket from a previous crash
+    QLocalServer::removeServer(kSocketName);
 
     DaemonClient client;
     MainWindow window(&client);
     window.show();
+
+    // Listen for raise requests from new instances
+    QLocalServer server;
+    server.listen(kSocketName);
+    QObject::connect(&server, &QLocalServer::newConnection, [&window, &server]() {
+        auto *conn = server.nextPendingConnection();
+        QObject::connect(conn, &QLocalSocket::readyRead, [&window, conn]() {
+            conn->readAll(); // consume the "raise" message
+            window.show();
+            window.raise();
+            window.activateWindow();
+            conn->deleteLater();
+        });
+    });
 
     return app.exec();
 }
