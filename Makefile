@@ -59,6 +59,7 @@ install: build build-host
 	systemctl --user enable --now bolt
 
 uninstall:
+	-pkill -f bolt-qt 2>/dev/null || true
 	-systemctl --user stop bolt
 	-systemctl --user disable bolt
 	rm -f ~/.local/bin/$(BINARY)
