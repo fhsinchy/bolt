@@ -14,7 +14,7 @@ const DOWNLOAD_EXTENSIONS = new Set([
   ".deb", ".rpm", ".appimage", ".flatpak", ".snap",
   ".exe", ".msi", ".dmg", ".pkg",
   ".pdf",
-  ".bin", ".run", ".sh",
+  ".bin", ".run",
 ]);
 
 function getExtension(url) {

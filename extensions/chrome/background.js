@@ -361,7 +361,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // --- Filters ---
 
+// Small/text file extensions that should never be intercepted
+const SKIP_EXTENSIONS = new Set([
+  ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
+  ".json", ".xml", ".yaml", ".yml", ".toml",
+  ".md", ".txt", ".csv", ".log",
+  ".sh", ".bash", ".zsh", ".fish", ".bat", ".ps1",
+  ".py", ".rb", ".pl", ".php", ".go", ".rs", ".java", ".kt",
+  ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".m",
+  ".sql", ".graphql",
+  ".conf", ".cfg", ".ini", ".env",
+  ".gitignore", ".dockerignore", ".editorconfig",
+]);
+
 function passesFilters(url, totalBytes, settings) {
+  // Always skip text/source/script files — too small to benefit from Bolt
+  const ext = getFileExtension(url);
+  if (SKIP_EXTENSIONS.has(ext)) return false;
+
   // Min file size (only when Chrome provides it)
   if (settings.minFileSize > 0 && totalBytes > 0) {
     if (totalBytes < settings.minFileSize) return false;
@@ -380,8 +397,7 @@ function passesFilters(url, totalBytes, settings) {
     }
   }
 
-  // Extension whitelist/blacklist
-  const ext = getFileExtension(url);
+  // Extension whitelist/blacklist (ext already computed above)
   if (settings.extensionWhitelist.length > 0) {
     if (!settings.extensionWhitelist.some((e) => e.trim() === ext))
       return false;
