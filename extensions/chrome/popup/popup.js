@@ -5,8 +5,9 @@ const minSize = document.getElementById("min-size");
 const sizeUnit = document.getElementById("size-unit");
 const extWhitelist = document.getElementById("ext-whitelist");
 const extBlacklist = document.getElementById("ext-blacklist");
-const domainBlocklist = document.getElementById("domain-blocklist");
 const saveBtn = document.getElementById("save-filters");
+const ignoreSiteBtn = document.getElementById("ignore-site");
+const blocklistItemsEl = document.getElementById("blocklist-items");
 
 const STATUS_LABELS = {
   ready: "Connected",
@@ -51,7 +52,9 @@ async function loadSettings() {
 
   extWhitelist.value = s.extensionWhitelist.join(", ");
   extBlacklist.value = s.extensionBlacklist.join(", ");
-  domainBlocklist.value = s.domainBlocklist.join(", ");
+
+  renderBlocklist(s.domainBlocklist);
+  await updateIgnoreButton(s.domainBlocklist);
 }
 
 function parseList(value) {
@@ -88,11 +91,87 @@ saveBtn.addEventListener("click", () => {
     minFileSize: sizeBytes,
     extensionWhitelist: parseExtensionList(extWhitelist.value),
     extensionBlacklist: parseExtensionList(extBlacklist.value),
-    domainBlocklist: parseList(domainBlocklist.value),
   });
   saveBtn.textContent = "Saved";
   setTimeout(() => (saveBtn.textContent = "Save"), 1500);
 });
+
+// --- Blocklist ---
+
+let currentTabDomain = "";
+
+async function getCurrentTabDomain() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url) return new URL(tab.url).hostname;
+  } catch { /* ignore */ }
+  return "";
+}
+
+function isDomainBlocked(domain, blocklist) {
+  return blocklist.some((d) => {
+    const blocked = d.trim();
+    return domain === blocked || domain.endsWith("." + blocked);
+  });
+}
+
+async function updateIgnoreButton(blocklist) {
+  currentTabDomain = await getCurrentTabDomain();
+  if (!currentTabDomain || currentTabDomain === "newtab" || !currentTabDomain.includes(".")) {
+    ignoreSiteBtn.textContent = "Ignore this site";
+    ignoreSiteBtn.disabled = true;
+    return;
+  }
+  if (isDomainBlocked(currentTabDomain, blocklist)) {
+    ignoreSiteBtn.textContent = "This site is ignored";
+    ignoreSiteBtn.disabled = true;
+  } else {
+    ignoreSiteBtn.textContent = "Ignore this site";
+    ignoreSiteBtn.disabled = false;
+  }
+}
+
+function renderBlocklist(blocklist) {
+  while (blocklistItemsEl.firstChild) {
+    blocklistItemsEl.removeChild(blocklistItemsEl.firstChild);
+  }
+  for (const domain of blocklist) {
+    const item = document.createElement("div");
+    item.className = "blocklist-item";
+
+    const label = document.createElement("span");
+    label.textContent = domain;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "\u00d7";
+    removeBtn.title = "Remove";
+    removeBtn.addEventListener("click", () => removeDomain(domain));
+
+    item.appendChild(label);
+    item.appendChild(removeBtn);
+    blocklistItemsEl.appendChild(item);
+  }
+}
+
+async function addCurrentDomain() {
+  if (!currentTabDomain) return;
+  const s = await chrome.storage.local.get({ domainBlocklist: [] });
+  if (isDomainBlocked(currentTabDomain, s.domainBlocklist)) return;
+  s.domainBlocklist.push(currentTabDomain);
+  await chrome.storage.local.set({ domainBlocklist: s.domainBlocklist });
+  renderBlocklist(s.domainBlocklist);
+  await updateIgnoreButton(s.domainBlocklist);
+}
+
+async function removeDomain(domain) {
+  const s = await chrome.storage.local.get({ domainBlocklist: [] });
+  s.domainBlocklist = s.domainBlocklist.filter((d) => d !== domain);
+  await chrome.storage.local.set({ domainBlocklist: s.domainBlocklist });
+  renderBlocklist(s.domainBlocklist);
+  await updateIgnoreButton(s.domainBlocklist);
+}
+
+ignoreSiteBtn.addEventListener("click", addCurrentDomain);
 
 // --- Init ---
 updateStatus();

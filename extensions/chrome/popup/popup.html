@@ -45,14 +45,14 @@
           <input type="text" id="ext-blacklist" placeholder=".exe, .msi">
         </label>
 
-        <label>
-          Domain blocklist
-          <input type="text" id="domain-blocklist" placeholder="ads.example.com">
-        </label>
-
         <button id="save-filters">Save</button>
       </div>
     </details>
+
+    <div class="blocklist-section">
+      <button id="ignore-site" class="ignore-btn">Ignore this site</button>
+      <div id="blocklist-items" class="blocklist-items"></div>
+    </div>
   </div>
 
   <script src="popup.js"></script>

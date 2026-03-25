@@ -69,17 +69,13 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
-function passesDomainFilter(url) {
-  if (cachedSettings.domainBlocklist.length === 0) return true;
-  try {
-    const domain = new URL(url).hostname;
-    return !cachedSettings.domainBlocklist.some((d) => {
-      const blocked = d.trim();
-      return domain === blocked || domain.endsWith("." + blocked);
-    });
-  } catch {
-    return true;
-  }
+function isPageBlocked() {
+  if (cachedSettings.domainBlocklist.length === 0) return false;
+  const domain = window.location.hostname;
+  return cachedSettings.domainBlocklist.some((d) => {
+    const blocked = d.trim();
+    return domain === blocked || domain.endsWith("." + blocked);
+  });
 }
 
 function passesExtensionFilter(url) {
@@ -96,6 +92,10 @@ function passesExtensionFilter(url) {
 document.addEventListener("click", (e) => {
   // Only intercept left clicks without modifiers
   if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+
+  // If this page's domain is blocklisted, ignore everything
+  if (isPageBlocked()) return;
+
   if (!cachedSettings.captureEnabled) return;
 
   const link = e.target.closest("a[href]");
@@ -109,7 +109,7 @@ document.addEventListener("click", (e) => {
 
   // Check filters synchronously before preventing default — if filtered,
   // let the browser handle the click normally.
-  if (!passesDomainFilter(url) || !passesExtensionFilter(url)) {
+  if (!passesExtensionFilter(url)) {
     debugLog("click filtered out", url);
     return;
   }

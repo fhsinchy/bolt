@@ -227,6 +227,21 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     return;
   }
 
+  // If the originating page is blocklisted, ignore entirely.
+  // Prefer referrer; fall back to active tab (best-effort — the active tab
+  // may not be the one that initiated the download if the user switched tabs).
+  let pageUrl = downloadItem.referrer || "";
+  if (!pageUrl) {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      pageUrl = tab?.url || "";
+    } catch { /* ignore */ }
+  }
+  if (isPageBlocked(pageUrl, cachedSettings.domainBlocklist)) {
+    debugLog("page blocklisted, ignoring", url);
+    return;
+  }
+
   // Apply filters
   if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) {
     debugLog("filtered out", url);
@@ -322,6 +337,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const traceID = generateTraceID();
     debugLog("link click download", msg.url, "trace=" + traceID);
 
+    // If the originating page is blocklisted, let browser handle it
+    if (isPageBlocked(msg.pageUrl, cachedSettings.domainBlocklist)) {
+      debugLog("page blocklisted, ignoring", msg.url, "trace=" + traceID);
+      chrome.downloads.download({ url: msg.url });
+      sendResponse({ ok: true });
+      return;
+    }
+
     // Apply the same filters as automatic capture
     if (!passesFilters(msg.url, 0, cachedSettings)) {
       debugLog("filtered out", msg.url, "trace=" + traceID);
@@ -361,6 +384,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // --- Filters ---
 
+function isPageBlocked(pageUrl, blocklist) {
+  if (!blocklist.length || !pageUrl) return false;
+  try {
+    const domain = new URL(pageUrl).hostname;
+    return blocklist.some((d) => {
+      const blocked = d.trim();
+      return domain === blocked || domain.endsWith("." + blocked);
+    });
+  } catch {
+    return false;
+  }
+}
+
 // Small/text file extensions that should never be intercepted
 const SKIP_EXTENSIONS = new Set([
   ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
@@ -382,19 +418,6 @@ function passesFilters(url, totalBytes, settings) {
   // Min file size (only when Chrome provides it)
   if (settings.minFileSize > 0 && totalBytes > 0) {
     if (totalBytes < settings.minFileSize) return false;
-  }
-
-  // Domain blocklist
-  if (settings.domainBlocklist.length > 0) {
-    try {
-      const domain = new URL(url).hostname;
-      if (settings.domainBlocklist.some((d) => {
-        const blocked = d.trim();
-        return domain === blocked || domain.endsWith("." + blocked);
-      })) return false;
-    } catch {
-      /* invalid URL, let it through */
-    }
   }
 
   // Extension whitelist/blacklist (ext already computed above)
