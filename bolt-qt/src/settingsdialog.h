@@ -36,6 +36,9 @@ private:
     QSpinBox *m_maxRetriesSpin;
     QDoubleSpinBox *m_minSegmentSizeSpin;
     QCheckBox *m_notificationsCheck;
+    QDoubleSpinBox *m_minFileSizeSpin;
+    QLineEdit *m_extensionWhitelistEdit;
+    QLineEdit *m_extensionBlacklistEdit;
     QCheckBox *m_minimizeToTrayCheck;
     QLabel *m_errorLabel;
     QPushButton *m_saveButton;

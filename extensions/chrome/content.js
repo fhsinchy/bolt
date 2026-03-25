@@ -8,12 +8,40 @@
 // explicit link clicks on obvious download links.
 
 const DOWNLOAD_EXTENSIONS = new Set([
-  ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz",
-  ".gz", ".bz2", ".xz", ".7z", ".rar",
+  // Archives
+  ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar.zst",
+  ".gz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".cab", ".z",
+  ".lz4", ".lzma", ".lha", ".lzh",
+  // Disk images
   ".iso", ".img",
+  // VM images
+  ".vmdk", ".vdi", ".vhd", ".vhdx", ".qcow2", ".ova",
+  // Linux packages
   ".deb", ".rpm", ".appimage", ".flatpak", ".snap",
-  ".exe", ".msi", ".dmg", ".pkg",
-  ".pdf",
+  // Windows/macOS installers
+  ".exe", ".msi", ".msu", ".dmg", ".pkg",
+  // Android
+  ".apk", ".xapk",
+  // Video
+  ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm",
+  ".m4v", ".mpg", ".mpeg", ".ts", ".vob", ".3gp",
+  // Audio
+  ".mp3", ".flac", ".wav", ".aac", ".ogg", ".opus",
+  ".wma", ".m4a", ".aiff",
+  // Documents
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".odt", ".ods", ".odp",
+  // Ebooks
+  ".epub", ".mobi", ".azw3", ".djvu", ".cbz", ".cbr", ".kepub.epub",
+  // Fonts
+  ".ttf", ".otf",
+  // Design/3D
+  ".psd", ".xcf", ".blend", ".stl", ".obj",
+  // Packages
+  ".jar", ".whl",
+  // Torrent
+  ".torrent",
+  // Binaries
   ".bin", ".run",
 ]);
 
@@ -23,8 +51,8 @@ function getExtension(url) {
     const filename = pathname.split("/").pop();
     if (!filename) return "";
 
-    // Handle .tar.gz, .tar.bz2, .tar.xz
-    for (const ext of [".tar.gz", ".tar.bz2", ".tar.xz"]) {
+    // Handle compound extensions
+    for (const ext of [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".kepub.epub"]) {
       if (filename.toLowerCase().endsWith(ext)) return ext;
     }
 
@@ -48,8 +76,6 @@ let cachedSettings = {
   captureEnabled: false,
   debugLogging: false,
   domainBlocklist: [],
-  extensionWhitelist: [],
-  extensionBlacklist: [],
 };
 
 function debugLog(...args) {
@@ -78,17 +104,6 @@ function isPageBlocked() {
   });
 }
 
-function passesExtensionFilter(url) {
-  const ext = getExtension(url);
-  if (cachedSettings.extensionWhitelist.length > 0) {
-    if (!cachedSettings.extensionWhitelist.some((e) => e.trim() === ext)) return false;
-  }
-  if (cachedSettings.extensionBlacklist.length > 0) {
-    if (cachedSettings.extensionBlacklist.some((e) => e.trim() === ext)) return false;
-  }
-  return true;
-}
-
 document.addEventListener("click", (e) => {
   // Only intercept left clicks without modifiers
   if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
@@ -104,13 +119,6 @@ document.addEventListener("click", (e) => {
   const url = link.href;
   if (!isDownloadLink(url)) {
     debugLog("click on non-download link", url);
-    return;
-  }
-
-  // Check filters synchronously before preventing default — if filtered,
-  // let the browser handle the click normally.
-  if (!passesExtensionFilter(url)) {
-    debugLog("click filtered out", url);
     return;
   }
 

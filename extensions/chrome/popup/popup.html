@@ -21,34 +21,6 @@
       <span>Debug logging</span>
     </label>
 
-    <details class="filters">
-      <summary>Filters</summary>
-      <div class="filter-group">
-        <label>
-          Minimum file size
-          <div class="size-input">
-            <input type="number" id="min-size" min="0" value="0">
-            <select id="size-unit">
-              <option value="1024">KB</option>
-              <option value="1048576" selected>MB</option>
-            </select>
-          </div>
-        </label>
-
-        <label>
-          Extension whitelist
-          <input type="text" id="ext-whitelist" placeholder=".zip, .iso, .tar.gz">
-        </label>
-
-        <label>
-          Extension blacklist
-          <input type="text" id="ext-blacklist" placeholder=".exe, .msi">
-        </label>
-
-        <button id="save-filters">Save</button>
-      </div>
-    </details>
-
     <div class="blocklist-section">
       <button id="ignore-site" class="ignore-btn">Ignore this site</button>
       <div id="blocklist-items" class="blocklist-items"></div>

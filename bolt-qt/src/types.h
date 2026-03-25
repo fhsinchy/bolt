@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QDateTime>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 struct Download {
@@ -116,6 +118,9 @@ struct Config {
     bool notifications = true;
     int maxRetries = 0;
     qint64 minSegmentSize = 0;
+    qint64 minFileSize = 0;
+    QStringList extensionWhitelist;
+    QStringList extensionBlacklist;
 
     static Config fromJson(const QJsonObject &obj) {
         Config c;
@@ -126,6 +131,11 @@ struct Config {
         c.notifications = obj["notifications"].toBool();
         c.maxRetries = obj["max_retries"].toInt();
         c.minSegmentSize = obj["min_segment_size"].toInteger();
+        c.minFileSize = obj["min_file_size"].toInteger();
+        const auto wl = obj["extension_whitelist"].toArray();
+        for (const auto &v : wl) c.extensionWhitelist.append(v.toString());
+        const auto bl = obj["extension_blacklist"].toArray();
+        for (const auto &v : bl) c.extensionBlacklist.append(v.toString());
         return c;
     }
 };

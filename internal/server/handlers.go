@@ -188,13 +188,16 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var partial struct {
-		DownloadDir      *string `json:"download_dir"`
-		MaxConcurrent    *int    `json:"max_concurrent"`
-		DefaultSegments  *int    `json:"default_segments"`
-		GlobalSpeedLimit *int64  `json:"global_speed_limit"`
-		MaxRetries       *int    `json:"max_retries"`
-		Notifications    *bool   `json:"notifications"`
-		MinSegmentSize   *int64  `json:"min_segment_size"`
+		DownloadDir        *string   `json:"download_dir"`
+		MaxConcurrent      *int      `json:"max_concurrent"`
+		DefaultSegments    *int      `json:"default_segments"`
+		GlobalSpeedLimit   *int64    `json:"global_speed_limit"`
+		MaxRetries         *int      `json:"max_retries"`
+		Notifications      *bool     `json:"notifications"`
+		MinSegmentSize     *int64    `json:"min_segment_size"`
+		MinFileSize        *int64    `json:"min_file_size"`
+		ExtensionWhitelist *[]string `json:"extension_whitelist"`
+		ExtensionBlacklist *[]string `json:"extension_blacklist"`
 	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -225,6 +228,15 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		if partial.MinSegmentSize != nil {
 			cfg.MinSegmentSize = *partial.MinSegmentSize
 		}
+		if partial.MinFileSize != nil {
+			cfg.MinFileSize = *partial.MinFileSize
+		}
+		if partial.ExtensionWhitelist != nil {
+			cfg.ExtensionWhitelist = *partial.ExtensionWhitelist
+		}
+		if partial.ExtensionBlacklist != nil {
+			cfg.ExtensionBlacklist = *partial.ExtensionBlacklist
+		}
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR")
@@ -252,6 +264,15 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if partial.MinSegmentSize != nil {
 		attrs = append(attrs, "min_segment_size", *partial.MinSegmentSize)
+	}
+	if partial.MinFileSize != nil {
+		attrs = append(attrs, "min_file_size", *partial.MinFileSize)
+	}
+	if partial.ExtensionWhitelist != nil {
+		attrs = append(attrs, "extension_whitelist", *partial.ExtensionWhitelist)
+	}
+	if partial.ExtensionBlacklist != nil {
+		attrs = append(attrs, "extension_blacklist", *partial.ExtensionBlacklist)
 	}
 	if len(attrs) > 0 {
 		slog.Info("config updated", attrs...)
@@ -353,6 +374,8 @@ func mapEngineError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR")
 	case errors.Is(err, model.ErrProbeRejected):
 		writeError(w, http.StatusBadGateway, err.Error(), "PROBE_FAILED")
+	case errors.Is(err, model.ErrFileExcluded):
+		writeError(w, http.StatusUnprocessableEntity, err.Error(), "FILE_EXCLUDED")
 	default:
 		writeError(w, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
 	}

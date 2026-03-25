@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Config holds all user-configurable settings for the Bolt download manager.
@@ -12,10 +13,13 @@ type Config struct {
 	DownloadDir      string `json:"download_dir"`
 	MaxConcurrent    int    `json:"max_concurrent"`
 	DefaultSegments  int    `json:"default_segments"`
-	GlobalSpeedLimit int64  `json:"global_speed_limit"`
-	Notifications    bool   `json:"notifications"`
-	MaxRetries       int    `json:"max_retries"`
-	MinSegmentSize   int64  `json:"min_segment_size"`
+	GlobalSpeedLimit   int64    `json:"global_speed_limit"`
+	Notifications      bool     `json:"notifications"`
+	MaxRetries         int      `json:"max_retries"`
+	MinSegmentSize     int64    `json:"min_segment_size"`
+	MinFileSize        int64    `json:"min_file_size"`
+	ExtensionWhitelist []string `json:"extension_whitelist"`
+	ExtensionBlacklist []string `json:"extension_blacklist"`
 }
 
 // Dir returns the Bolt configuration directory, creating it if it does not
@@ -138,6 +142,21 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxRetries < 0 || c.MaxRetries > 100 {
 		return fmt.Errorf("max_retries must be between 0 and 100, got %d", c.MaxRetries)
+	}
+	if c.MinFileSize < 0 {
+		return fmt.Errorf("min_file_size must be non-negative, got %d", c.MinFileSize)
+	}
+	for i, ext := range c.ExtensionWhitelist {
+		if !strings.HasPrefix(ext, ".") {
+			return fmt.Errorf("extension_whitelist[%d] must start with '.', got %q", i, ext)
+		}
+		c.ExtensionWhitelist[i] = strings.ToLower(ext)
+	}
+	for i, ext := range c.ExtensionBlacklist {
+		if !strings.HasPrefix(ext, ".") {
+			return fmt.Errorf("extension_blacklist[%d] must start with '.', got %q", i, ext)
+		}
+		c.ExtensionBlacklist[i] = strings.ToLower(ext)
 	}
 	return nil
 }

@@ -6,9 +6,19 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QSettings>
 #include <QSystemTrayIcon>
 #include <QVBoxLayout>
+
+static QStringList parseExtList(const QString &text) {
+    QStringList result;
+    for (auto &s : text.split(',', Qt::SkipEmptyParts)) {
+        auto trimmed = s.trimmed().toLower();
+        if (!trimmed.isEmpty()) result.append(trimmed);
+    }
+    return result;
+}
 
 SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     : QDialog(parent)
@@ -62,6 +72,24 @@ SettingsDialog::SettingsDialog(DaemonClient *client, QWidget *parent)
     m_minSegmentSizeSpin->setDecimals(2);
     m_minSegmentSizeSpin->setSuffix(" MB");
     form->addRow("Min segment size:", m_minSegmentSizeSpin);
+
+    // Min file size (MB) — files smaller than this are excluded
+    m_minFileSizeSpin = new QDoubleSpinBox();
+    m_minFileSizeSpin->setRange(0.0, 10000.0);
+    m_minFileSizeSpin->setDecimals(1);
+    m_minFileSizeSpin->setSuffix(" MB");
+    m_minFileSizeSpin->setSpecialValueText("No minimum");
+    form->addRow("Min file size:", m_minFileSizeSpin);
+
+    // Extension whitelist
+    m_extensionWhitelistEdit = new QLineEdit();
+    m_extensionWhitelistEdit->setPlaceholderText("e.g. .zip, .iso, .tar.gz (empty = allow all)");
+    form->addRow("Extension whitelist:", m_extensionWhitelistEdit);
+
+    // Extension blacklist
+    m_extensionBlacklistEdit = new QLineEdit();
+    m_extensionBlacklistEdit->setPlaceholderText("e.g. .exe, .msi (empty = block none)");
+    form->addRow("Extension blacklist:", m_extensionBlacklistEdit);
 
     // Notifications
     m_notificationsCheck = new QCheckBox("Desktop notifications");
@@ -117,6 +145,9 @@ void SettingsDialog::onConfigFetched(Config cfg) {
     m_speedLimitSpin->setValue(static_cast<double>(cfg.globalSpeedLimit) / (1024.0 * 1024.0));
     m_maxRetriesSpin->setValue(cfg.maxRetries);
     m_minSegmentSizeSpin->setValue(static_cast<double>(cfg.minSegmentSize) / (1024.0 * 1024.0));
+    m_minFileSizeSpin->setValue(static_cast<double>(cfg.minFileSize) / (1024.0 * 1024.0));
+    m_extensionWhitelistEdit->setText(cfg.extensionWhitelist.join(", "));
+    m_extensionBlacklistEdit->setText(cfg.extensionBlacklist.join(", "));
     m_notificationsCheck->setChecked(cfg.notifications);
 
     // Load GUI-local setting
@@ -156,6 +187,18 @@ void SettingsDialog::onSave() {
     qint64 minSegSize = std::llround(m_minSegmentSizeSpin->value() * 1024.0 * 1024.0);
     if (minSegSize != m_originalConfig.minSegmentSize)
         changes["min_segment_size"] = minSegSize;
+
+    qint64 minFileSize = std::llround(m_minFileSizeSpin->value() * 1024.0 * 1024.0);
+    if (minFileSize != m_originalConfig.minFileSize)
+        changes["min_file_size"] = minFileSize;
+
+    QStringList newWhitelist = parseExtList(m_extensionWhitelistEdit->text());
+    if (newWhitelist != m_originalConfig.extensionWhitelist)
+        changes["extension_whitelist"] = QJsonArray::fromStringList(newWhitelist);
+
+    QStringList newBlacklist = parseExtList(m_extensionBlacklistEdit->text());
+    if (newBlacklist != m_originalConfig.extensionBlacklist)
+        changes["extension_blacklist"] = QJsonArray::fromStringList(newBlacklist);
 
     bool notifications = m_notificationsCheck->isChecked();
     if (notifications != m_originalConfig.notifications)

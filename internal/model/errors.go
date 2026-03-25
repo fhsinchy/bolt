@@ -16,6 +16,7 @@ var (
 	ErrSizeMismatch       = errors.New("content length does not match original download size")
 	ErrProbeRejected      = errors.New("server rejected probe request")
 	ErrDuplicateURL       = errors.New("download with this URL already exists")
+	ErrFileExcluded       = errors.New("file excluded by filter rules")
 )
 
 // DuplicateDownloadError is returned when a new download matches an existing

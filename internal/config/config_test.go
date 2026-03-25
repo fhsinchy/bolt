@@ -130,6 +130,49 @@ func TestValidate_RejectsOutOfRange(t *testing.T) {
 	}
 }
 
+func TestValidate_NegativeMinFileSize(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MinFileSize = -1
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected validation error for negative MinFileSize, got nil")
+	}
+}
+
+func TestValidate_WhitelistEntryWithoutDot(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ExtensionWhitelist = []string{"zip"} // missing leading dot
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected validation error for whitelist entry without '.', got nil")
+	}
+}
+
+func TestValidate_BlacklistEntryWithoutDot(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ExtensionBlacklist = []string{"exe"} // missing leading dot
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected validation error for blacklist entry without '.', got nil")
+	}
+}
+
+func TestValidate_ValidConfigWithFilterFields(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MinFileSize = 1048576
+	cfg.ExtensionWhitelist = []string{".zip", ".PDF"}
+	cfg.ExtensionBlacklist = []string{".EXE"}
+
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config to pass, got %v", err)
+	}
+
+	// Validate should lowercase the extensions.
+	if cfg.ExtensionWhitelist[1] != ".pdf" {
+		t.Errorf("expected whitelist to be lowercased, got %q", cfg.ExtensionWhitelist[1])
+	}
+	if cfg.ExtensionBlacklist[0] != ".exe" {
+		t.Errorf("expected blacklist to be lowercased, got %q", cfg.ExtensionBlacklist[0])
+	}
+}
+
 func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

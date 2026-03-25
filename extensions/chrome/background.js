@@ -140,9 +140,6 @@ async function sendWithConnection(cmd) {
 const DEFAULT_SETTINGS = {
   captureEnabled: false,
   debugLogging: false,
-  minFileSize: 10485760,  // 10 MB
-  extensionWhitelist: [],
-  extensionBlacklist: [],
   domainBlocklist: [],
 };
 
@@ -179,6 +176,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const filename = resp.data?.download?.filename || url.split("/").pop();
     debugLog("download handed off successfully", "trace=" + traceID);
     showNotification("Sent to Bolt", filename);
+  } else if (resp && resp.error === "file_excluded") {
+    debugLog("file excluded by daemon", url, "trace=" + traceID);
+    reinitiatedUrls.add(url);
+    chrome.downloads.download({ url });
   } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
     // Bolt is genuinely unreachable — fall back to browser download
     debugLog("bolt unavailable, falling back to browser", url);
@@ -242,12 +243,6 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     return;
   }
 
-  // Apply filters
-  if (!passesFilters(url, downloadItem.totalBytes, cachedSettings)) {
-    debugLog("filtered out", url);
-    return;
-  }
-
   const traceID = generateTraceID();
   debugLog("capturing download", url, "trace=" + traceID);
 
@@ -275,6 +270,9 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
       debugLog("cancel failed for browser download", downloadItem.id);
       /* cancel/erase is best-effort */
     }
+  } else if (resp && resp.error === "file_excluded") {
+    // Daemon excluded this file — let the browser download continue as-is (don't cancel it)
+    debugLog("file excluded by daemon", url, "trace=" + traceID);
   } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
     // Bolt is genuinely unreachable — let the browser download continue as-is
     debugLog("bolt unavailable, falling back to browser", url);
@@ -345,15 +343,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
-    // Apply the same filters as automatic capture
-    if (!passesFilters(msg.url, 0, cachedSettings)) {
-      debugLog("filtered out", msg.url, "trace=" + traceID);
-      // Filtered out — let the browser handle it normally
-      chrome.downloads.download({ url: msg.url });
-      sendResponse({ ok: true });
-      return;
-    }
-
     const headers = await collectHeaders(msg.url, msg.pageUrl);
 
     const resp = await sendWithConnection({
@@ -366,6 +355,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         resp.data?.download?.filename || msg.url.split("/").pop();
       debugLog("download handed off successfully", "trace=" + traceID);
       showNotification("Sent to Bolt", filename);
+    } else if (resp && resp.error === "file_excluded") {
+      debugLog("file excluded by daemon", msg.url, "trace=" + traceID);
+      reinitiatedUrls.add(msg.url);
+      chrome.downloads.download({ url: msg.url });
     } else if (!resp || resp.error === "daemon_unavailable" || resp.error === "host_unavailable" || resp.error === "timeout") {
       debugLog("bolt unavailable, falling back to browser", msg.url);
       reinitiatedUrls.add(msg.url);
@@ -394,61 +387,6 @@ function isPageBlocked(pageUrl, blocklist) {
     });
   } catch {
     return false;
-  }
-}
-
-// Small/text file extensions that should never be intercepted
-const SKIP_EXTENSIONS = new Set([
-  ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
-  ".json", ".xml", ".yaml", ".yml", ".toml",
-  ".md", ".txt", ".csv", ".log",
-  ".sh", ".bash", ".zsh", ".fish", ".bat", ".ps1",
-  ".py", ".rb", ".pl", ".php", ".go", ".rs", ".java", ".kt",
-  ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".m",
-  ".sql", ".graphql",
-  ".conf", ".cfg", ".ini", ".env",
-  ".gitignore", ".dockerignore", ".editorconfig",
-]);
-
-function passesFilters(url, totalBytes, settings) {
-  // Always skip text/source/script files — too small to benefit from Bolt
-  const ext = getFileExtension(url);
-  if (SKIP_EXTENSIONS.has(ext)) return false;
-
-  // Min file size (only when Chrome provides it)
-  if (settings.minFileSize > 0 && totalBytes > 0) {
-    if (totalBytes < settings.minFileSize) return false;
-  }
-
-  // Extension whitelist/blacklist (ext already computed above)
-  if (settings.extensionWhitelist.length > 0) {
-    if (!settings.extensionWhitelist.some((e) => e.trim() === ext))
-      return false;
-  }
-  if (settings.extensionBlacklist.length > 0) {
-    if (settings.extensionBlacklist.some((e) => e.trim() === ext))
-      return false;
-  }
-
-  return true;
-}
-
-function getFileExtension(url) {
-  try {
-    const pathname = new URL(url).pathname;
-    const filename = pathname.split("/").pop();
-    if (!filename) return "";
-
-    // Handle compound extensions (.tar.gz, .tar.bz2, .tar.xz)
-    for (const ext of [".tar.gz", ".tar.bz2", ".tar.xz"]) {
-      if (filename.toLowerCase().endsWith(ext)) return ext;
-    }
-
-    const dotIdx = filename.lastIndexOf(".");
-    if (dotIdx === -1) return "";
-    return filename.slice(dotIdx).toLowerCase();
-  } catch {
-    return "";
   }
 }
 

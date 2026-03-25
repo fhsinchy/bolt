@@ -130,6 +130,11 @@ func (e *Engine) AddDownload(ctx context.Context, req model.AddRequest) (*model.
 	filename := DetectFilename(req.Filename, probeResult.Filename, probeResult.FinalURL)
 	slog.Debug("filename detected", "filename", filename, "url", req.URL)
 
+	// Check exclusion rules before proceeding
+	if err := checkExclusion(&cfg, filename, probeResult.TotalSize); err != nil {
+		return nil, err
+	}
+
 	// Determine directory
 	dir := req.Dir
 	if dir == "" {
