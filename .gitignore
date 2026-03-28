@@ -43,10 +43,9 @@ docs/
 .DS_Store
 Thumbs.db
 
-# Qt / CMake build artifacts
+# Python / PySide6 GUI
+bolt-qt/.venv/
 bolt-qt/build/
-*.o
-*.moc
-moc_*.cpp
-qrc_*.cpp
-ui_*.h
+bolt-qt/src/*.egg-info/
+__pycache__/
+*.pyc

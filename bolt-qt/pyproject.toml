@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools >= 68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bolt-qt"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6 >= 6.5",
+]
+description = "PySide6 GUI for Bolt Download Manager"
+license = {text = "MIT"}
+
+[project.scripts]
+bolt-qt = "bolt_qt.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bolt_qt = ["tray-icon.png"]

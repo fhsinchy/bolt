@@ -1,5 +1,5 @@
 .PHONY: build build-host test test-race test-v test-stress test-cover install uninstall reinstall clean \
-        build-qt test-qt build-all test-all
+        build-qt run-qt build-all test-all
 
 # --- Daemon (Go) ---
 
@@ -33,11 +33,11 @@ install: build build-host
 	mkdir -p ~/.local/bin
 	cp $(BINARY) ~/.local/bin/
 	cp bolt-host ~/.local/bin/
-	@if [ -f bolt-qt/build/bolt-qt ]; then \
-		cp bolt-qt/build/bolt-qt ~/.local/bin/; \
+	@if [ -d bolt-qt/.venv ]; then \
+		ln -sf $(CURDIR)/bolt-qt/.venv/bin/bolt-qt ~/.local/bin/bolt-qt; \
 		echo "Installed bolt-qt"; \
 	else \
-		echo "Note: bolt-qt not built (run 'make build-qt' first, requires Qt6 dev packages)"; \
+		echo "Note: bolt-qt not built (run 'make build-qt' first)"; \
 	fi
 	@for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do \
 		mkdir -p $$dir; \
@@ -46,7 +46,7 @@ install: build build-host
 	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/
 	mkdir -p ~/.local/share/applications
-	@if [ -f bolt-qt/build/bolt-qt ]; then \
+	@if [ -d bolt-qt/.venv ]; then \
 		sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop; \
 	else \
 		echo "Note: skipping bolt.desktop (bolt-qt not built)"; \
@@ -81,19 +81,20 @@ clean:
 	rm -f $(BINARY)
 	rm -f bolt-host
 	rm -rf dist
-	rm -rf bolt-qt/build
+	rm -rf bolt-qt/.venv
 	go clean -testcache
 
-# --- Qt GUI ---
+# --- PySide6 GUI ---
 
 build-qt:
-	cd bolt-qt && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+	python3 -m venv bolt-qt/.venv
+	bolt-qt/.venv/bin/pip install bolt-qt/
 
-test-qt:
-	@echo "bolt-qt: no tests yet"
+run-qt:
+	bolt-qt/.venv/bin/bolt-qt
 
 # --- Meta ---
 
 build-all: build build-host build-qt
 
-test-all: test test-qt
+test-all: test

@@ -59,17 +59,18 @@ cmd/bolt-host/
   nativemsg.go             Native messaging read/write (length-prefixed JSON)
   relay.go                 HTTP relay to daemon Unix socket
   socketpath.go            Socket path resolution
-bolt-qt/                   C++ Qt6 GUI (requires Qt6 dev packages)
-  CMakeLists.txt           Qt6 build configuration
-  src/
-    main.cpp               Entry point, QApplication setup
-    types.h                Data structs + JSON parsing + formatting helpers
-    daemonclient.h/.cpp    REST client over QLocalSocket (Unix socket)
-    downloadlistmodel.h/.cpp QAbstractTableModel with poll-based speed/ETA
-    progressdelegate.h/.cpp  Progress bar column delegate
-    mainwindow.h/.cpp      Main window (toolbar, download table, status bar)
-    adddownloaddialog.h/.cpp Add URL dialog with probing
-    settingsdialog.h/.cpp  Settings dialog with config read/write
+bolt-qt/                   Python PySide6 GUI (requires Python 3.10+)
+  pyproject.toml           Package config, PySide6 dependency
+  src/bolt_qt/
+    __main__.py            Entry point, single-instance detection
+    types.py               Dataclasses + formatting helpers
+    daemon_client.py       REST client over Unix socket (http.client + QThread)
+    download_model.py      QAbstractTableModel + filter proxy
+    progress_delegate.py   Progress bar column delegate
+    main_window.py         Main window (toolbar, sidebar, table, tray)
+    add_download_dialog.py Add URL dialog with probing
+    settings_dialog.py     Settings dialog with config read/write
+    download_detail_dialog.py Download detail + segment visualization
 extensions/
   chrome/                  Chrome browser extension (Phase 2 — native messaging rewrite)
 images/                    Source icons
@@ -115,12 +116,13 @@ make test-race   # run all tests with race detector
 make test-v      # run all tests verbose
 make test-stress # run all tests including stress tests (slower, ~2 min)
 make test-cover  # run tests with coverage report
-make build-qt    # build Qt GUI (requires Qt6 dev packages: qt6-qtbase-devel)
-make build-all   # build all components (daemon + bolt-host + Qt stub)
+make build-qt    # create venv + install PySide6 GUI into bolt-qt/.venv/
+make run-qt      # run the PySide6 GUI
+make build-all   # build all components (daemon + bolt-host + bolt-qt)
 make test-all    # test all components
 make install     # build + install binary + systemd unit + .desktop + icon
 make uninstall   # stop + disable + remove binary + unit + .desktop + icon
-make clean       # remove binaries, build dirs, clear test cache
+make clean       # remove binaries, build dirs, venv, clear test cache
 ```
 
 ## Config
