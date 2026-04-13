@@ -29,29 +29,18 @@ test-cover:
 	go test ./... -count=1 -coverprofile=coverage.out -timeout 120s
 	go tool cover -func=coverage.out
 
-install: build build-host
-	mkdir -p ~/.local/bin
+install: build build-host build-qt
+	mkdir -p ~/.local/bin ~/.config/bolt ~/.local/share/bolt
+	mkdir -p ~/.config/systemd/user ~/.local/share/applications ~/.local/share/icons/hicolor/256x256/apps
 	cp $(BINARY) ~/.local/bin/
 	cp bolt-host ~/.local/bin/
-	@if [ -d bolt-qt/.venv ]; then \
-		ln -sf $(CURDIR)/bolt-qt/.venv/bin/bolt-qt ~/.local/bin/bolt-qt; \
-		echo "Installed bolt-qt"; \
-	else \
-		echo "Note: bolt-qt not built (run 'make build-qt' first)"; \
-	fi
+	ln -sf $(CURDIR)/bolt-qt/.venv/bin/bolt-qt ~/.local/bin/bolt-qt
 	@for dir in ~/.config/google-chrome/NativeMessagingHosts ~/.config/chromium/NativeMessagingHosts ~/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts; do \
 		mkdir -p $$dir; \
 		sed 's|BOLT_HOST_PATH|$(HOME)/.local/bin/bolt-host|' packaging/com.fhsinchy.bolt.json > $$dir/com.fhsinchy.bolt.json; \
 	done
-	mkdir -p ~/.config/systemd/user
 	cp packaging/bolt.service ~/.config/systemd/user/
-	mkdir -p ~/.local/share/applications
-	@if [ -d bolt-qt/.venv ]; then \
-		sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop; \
-	else \
-		echo "Note: skipping bolt.desktop (bolt-qt not built)"; \
-	fi
-	mkdir -p ~/.local/share/icons/hicolor/256x256/apps
+	sed 's|Exec=bolt-qt|Exec=$(HOME)/.local/bin/bolt-qt|' packaging/bolt.desktop > ~/.local/share/applications/bolt.desktop
 	cp images/appicon.png ~/.local/share/icons/hicolor/256x256/apps/bolt.png
 	-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null
 	-update-desktop-database ~/.local/share/applications 2>/dev/null
@@ -87,8 +76,9 @@ clean:
 # --- PySide6 GUI ---
 
 build-qt:
-	python3 -m venv bolt-qt/.venv
-	bolt-qt/.venv/bin/pip install bolt-qt/
+	@if [ ! -f bolt-qt/.venv/bin/bolt-qt ]; then \
+		python3 -m venv bolt-qt/.venv && bolt-qt/.venv/bin/pip install bolt-qt/; \
+	fi
 
 run-qt:
 	bolt-qt/.venv/bin/bolt-qt
