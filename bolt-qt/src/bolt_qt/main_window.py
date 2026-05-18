@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._client = client
         self._model = DownloadListModel(self)
+        self._client.set_model(self._model)
         self._table_view = QTableView(self)
         self._progress_delegate = ProgressDelegate(self)
         self._active_dialog: QDialog | None = None
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
         self._client.disconnected.connect(self._on_disconnected)
         self._client.downloads_fetched.connect(self._on_downloads_fetched)
         self._client.request_failed.connect(self._on_request_failed)
+        self._client.ws_state_changed.connect(self._refresh_stats)
 
         # Selection changes
         self._table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
@@ -297,6 +299,28 @@ class MainWindow(QMainWindow):
         self._update_empty_state()
         self._update_toolbar_state()
 
+    def _refresh_stats(self) -> None:
+        """Refresh status bar stats, category counts, and toolbar from model.
+
+        Called after WebSocket events update the model in-place (no full
+        download list is available). Uses model.all_downloads() instead.
+        """
+        downloads = self._model.all_downloads()
+
+        active_count = sum(1 for dl in downloads if dl.status == "active")
+        self._active_count_label.setText(
+            f"{active_count} downloading" if active_count > 0 else ""
+        )
+
+        total_speed = sum(
+            self._model.speed_for_id(dl.id) for dl in downloads if dl.status == "active"
+        )
+        self._total_speed_label.setText(format_speed(total_speed) if total_speed > 0 else "")
+
+        self._update_category_counts(downloads)
+        self._update_empty_state()
+        self._update_toolbar_state()
+
     def _on_request_failed(self, _endpoint: str, _status: int, _code: str, error_message: str) -> None:
         self.statusBar().showMessage("Error: " + error_message, 5000)
 
@@ -350,7 +374,7 @@ class MainWindow(QMainWindow):
         dl_id = self._model.download_id_at(src_idx.row())
         if not dl_id:
             return
-        dialog = DownloadDetailDialog(dl_id, self._client, self)
+        dialog = DownloadDetailDialog(dl_id, self._client, self._model, self)
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.destroyed.connect(lambda: setattr(self, "_active_dialog", None))
         self._active_dialog = dialog

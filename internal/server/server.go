@@ -30,6 +30,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/downloads/reorder", s.handleReorderDownloads)
 	mux.HandleFunc("POST /api/downloads/pause-all", s.handlePauseAll)
 	mux.HandleFunc("POST /api/downloads/resume-all", s.handleResumeAll)
+	// GET /api/downloads/{id} returns full download detail including per-segment
+	// progress. The WebSocket "progress" event also carries segment data, but this
+	// REST endpoint remains for:
+	//   - curl debugging over the Unix socket
+	//   - The Chrome extension bridge (bolt-host)
+	//   - Future clients that need a point-in-time snapshot without a WebSocket
 	mux.HandleFunc("GET /api/downloads/{id}", s.handleGetDownload)
 	mux.HandleFunc("DELETE /api/downloads/{id}", s.handleDeleteDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/pause", s.handlePauseDownload)

@@ -203,12 +203,24 @@ func (p *progressAggregator) emitProgress(totalDownloaded int64) {
 	}
 
 	if p.onProgress != nil {
+		p.mu.Lock()
+		segProgress := make([]model.SegmentProgress, len(p.segInfos))
+		for i := range p.segInfos {
+			segProgress[i] = model.SegmentProgress{
+				Index:      i,
+				Downloaded: p.segDownloaded[i],
+				Done:       p.segDone[i],
+			}
+		}
+		p.mu.Unlock()
+
 		p.onProgress(p.downloadID, model.ProgressUpdate{
 			Downloaded: totalDownloaded,
 			TotalSize:  p.totalSize,
 			Speed:      avgSpeed,
 			ETA:        eta,
 			Status:     model.Status(status),
+			Segments:   segProgress,
 		})
 	}
 }

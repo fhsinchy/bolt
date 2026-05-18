@@ -222,13 +222,17 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 				"speed":      update.Speed,
 				"eta":        update.ETA,
 				"status":     update.Status,
+				"segments":   update.Segments,
 			})
 		},
 		OnCompleted: func(id string, dl model.Download) {
 			s.queue.OnDownloadComplete(id)
 			s.broadcastEvent("completed", map[string]any{
-				"id":       id,
-				"filename": dl.Filename,
+				"id":         id,
+				"filename":   dl.Filename,
+				"dir":        dl.Dir,
+				"total_size": dl.TotalSize,
+				"downloaded": dl.Downloaded,
 			})
 			if s.notifications() {
 				_ = notify.Send("Download Complete", dl.Filename)
@@ -237,8 +241,9 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 		OnFailed: func(id string, dl model.Download, err error) {
 			s.queue.OnDownloadComplete(id)
 			s.broadcastEvent("failed", map[string]any{
-				"id":    id,
-				"error": err.Error(),
+				"id":       id,
+				"error":    err.Error(),
+				"filename": dl.Filename,
 			})
 			if s.notifications() {
 				_ = notify.Send("Download Failed", dl.Filename+": "+err.Error())
@@ -258,9 +263,15 @@ func (s *Service) EngineCallbacks() *engine.Callbacks {
 		},
 		OnAdded: func(dl model.Download) {
 			s.broadcastEvent("added", map[string]any{
-				"id":       dl.ID,
-				"url":      dl.URL,
-				"filename": dl.Filename,
+				"id":          dl.ID,
+				"url":         dl.URL,
+				"filename":    dl.Filename,
+				"dir":         dl.Dir,
+				"total_size":  dl.TotalSize,
+				"status":      dl.Status,
+				"segments":    dl.SegmentCount,
+				"queue_order": dl.QueueOrder,
+				"created_at":  dl.CreatedAt,
 			})
 		},
 		OnRemoved: func(id string) {

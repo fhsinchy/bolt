@@ -6,6 +6,7 @@ from PySide6.QtCore import QSortFilterProxyModel, QAbstractTableModel
 from .types import (
     Download,
     FileCategory,
+    Segment,
     category_for_filename,
     format_bytes,
     format_eta,
@@ -30,6 +31,7 @@ class DownloadListModel(QAbstractTableModel):
         self._downloads: list[Download] = []
         self._prev_downloaded: dict[str, int] = {}
         self._speeds: dict[str, float] = {}
+        self._segments_cache: dict[str, list] = {}
 
     def rowCount(self, parent=QModelIndex()):
         if parent.isValid():
@@ -128,6 +130,113 @@ class DownloadListModel(QAbstractTableModel):
         elif dl.status != "active":
             self._speeds.pop(dl.id, None)
         self._prev_downloaded[dl.id] = dl.downloaded
+
+    # ------------------------------------------------------------------
+    # WebSocket in-place update methods
+    # ------------------------------------------------------------------
+
+    def apply_progress(self, dl_id: str, data: dict) -> None:
+        """Apply a WebSocket progress event in-place.
+
+        Updates downloaded, status, total_size, and recalculates speed via EMA.
+        Segments data from the event is available via get_segments_for().
+        """
+        for i, dl in enumerate(self._downloads):
+            if dl.id == dl_id:
+                dl.downloaded = data.get("downloaded", dl.downloaded)
+                dl.status = data.get("status", dl.status)
+                if "total" in data and data["total"] > 0:
+                    dl.total_size = data["total"]
+                self._update_speed(dl)
+                # Cache segment data for detail dialog
+                if "segments" in data:
+                    self._segments_cache[dl_id] = data["segments"]
+                self.dataChanged.emit(
+                    self.index(i, 0), self.index(i, COL_COUNT - 1)
+                )
+                return
+
+    def apply_completed(self, dl_id: str, data: dict) -> None:
+        for i, dl in enumerate(self._downloads):
+            if dl.id == dl_id:
+                dl.status = "completed"
+                dl.downloaded = data.get("downloaded", dl.total_size)
+                dl.total_size = data.get("total_size", dl.total_size)
+                dl.filename = data.get("filename", dl.filename)
+                dl.dir = data.get("dir", dl.dir)
+                self._speeds.pop(dl_id, None)
+                self._prev_downloaded.pop(dl_id, None)
+                self.dataChanged.emit(
+                    self.index(i, 0), self.index(i, COL_COUNT - 1)
+                )
+                return
+
+    def apply_failed(self, dl_id: str, data: dict) -> None:
+        for i, dl in enumerate(self._downloads):
+            if dl.id == dl_id:
+                dl.status = "error"
+                dl.error = data.get("error", "")
+                dl.filename = data.get("filename", dl.filename)
+                self._speeds.pop(dl_id, None)
+                self._prev_downloaded.pop(dl_id, None)
+                self.dataChanged.emit(
+                    self.index(i, 0), self.index(i, COL_COUNT - 1)
+                )
+                return
+
+    def apply_status(self, dl_id: str, status: str) -> None:
+        for i, dl in enumerate(self._downloads):
+            if dl.id == dl_id:
+                dl.status = status
+                if status != "active":
+                    self._speeds.pop(dl_id, None)
+                self.dataChanged.emit(
+                    self.index(i, 0), self.index(i, COL_COUNT - 1)
+                )
+                return
+
+    def insert_download(self, data: dict) -> None:
+        """Insert a new download from a WebSocket 'added' event."""
+        dl = Download(
+            id=data.get("id", ""),
+            url=data.get("url", ""),
+            filename=data.get("filename", ""),
+            dir=data.get("dir", ""),
+            total_size=data.get("total_size", 0) or 0,
+            status=data.get("status", ""),
+            segment_count=data.get("segments", 0) or 0,
+            queue_order=data.get("queue_order", 0) or 0,
+            created_at=data.get("created_at", "") or "",
+        )
+        row = len(self._downloads)
+        self.beginInsertRows(QModelIndex(), row, row)
+        self._downloads.append(dl)
+        self._prev_downloaded[dl.id] = 0
+        self.endInsertRows()
+
+    def remove_download(self, dl_id: str) -> None:
+        for i, dl in enumerate(self._downloads):
+            if dl.id == dl_id:
+                self.beginRemoveRows(QModelIndex(), i, i)
+                self._prev_downloaded.pop(dl_id, None)
+                self._speeds.pop(dl_id, None)
+                self._segments_cache.pop(dl_id, None)
+                del self._downloads[i]
+                self.endRemoveRows()
+                return
+
+    def get_segments_for(self, dl_id: str) -> list:
+        """Return cached segment progress data for a download."""
+        raw_segments = self._segments_cache.get(dl_id, [])
+        return [Segment.from_json(s) for s in raw_segments]
+
+    def all_downloads(self) -> list[Download]:
+        """Return a snapshot of all downloads (for stats / category counts)."""
+        return list(self._downloads)
+
+    # ------------------------------------------------------------------
+    # Bulk update from REST poll
+    # ------------------------------------------------------------------
 
     def update_from_poll(self, incoming: list[Download]) -> None:
         incoming_by_id = {dl.id: i for i, dl in enumerate(incoming)}

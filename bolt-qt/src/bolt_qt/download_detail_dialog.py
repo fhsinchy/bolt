@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
 )
 
 from .daemon_client import DaemonClient
-from .types import Segment, format_bytes, format_eta, format_speed, status_display_text
+from .download_model import DownloadListModel
+from .types import Download, Segment, format_bytes, format_eta, format_speed, status_display_text
 
 
 class SegmentProgressWidget(QWidget):
@@ -67,14 +68,16 @@ class SegmentProgressWidget(QWidget):
 
 
 class DownloadDetailDialog(QDialog):
-    def __init__(self, download_id: str, client: DaemonClient, parent=None):
+    def __init__(self, download_id: str, client: DaemonClient, model: DownloadListModel, parent=None):
         super().__init__(parent)
         self._client = client
+        self._model = model
         self._download_id = download_id
         self._file_path = ""
         self._dir_path = ""
         self._prev_downloaded: int = -1
         self._speed: float = 0.0
+        self._dl: Download | None = None
 
         self.setWindowTitle("Download Details")
         self.setMinimumWidth(550)
@@ -181,31 +184,43 @@ class DownloadDetailDialog(QDialog):
         self._toggle_details_btn.clicked.connect(self._on_toggle_details)
         self._pause_resume_btn.clicked.connect(self._on_pause_resume)
         self._client.download_detail_fetched.connect(self._on_detail_fetched)
+        self._client.download_progress.connect(self._on_ws_progress)
+        self._client.download_status_changed.connect(self._on_status_changed)
 
-        # Poll timer
-        self._poll_timer = QTimer(self)
-        self._poll_timer.setInterval(1000)
-        self._poll_timer.timeout.connect(self._fetch_detail)
-
-        # Initial fetch
-        self._fetch_detail()
-
-    def _fetch_detail(self) -> None:
-        if self._client.is_connected():
-            self._client.fetch_download_detail(self._download_id)
+        # Initial fetch for full download object + segments
+        self._client.fetch_download_detail(self._download_id)
 
     def _on_detail_fetched(self, dl, segments) -> None:
+        """Handle the initial REST detail fetch."""
         if dl.id != self._download_id:
             return
-
+        self._dl = dl
         self._update_ui(dl, segments)
 
-        terminal = dl.status in ("completed", "error", "refresh")
-        if not terminal:
-            if not self._poll_timer.isActive():
-                self._poll_timer.start()
-        else:
-            self._poll_timer.stop()
+    def _on_ws_progress(self, dl_id: str, data: dict) -> None:
+        """Handle a WebSocket progress event."""
+        if dl_id != self._download_id or self._dl is None:
+            return
+
+        # Patch the download object with live event data
+        self._dl.downloaded = data.get("downloaded", self._dl.downloaded)
+        self._dl.status = data.get("status", self._dl.status)
+        if "total" in data and data["total"] > 0:
+            self._dl.total_size = data["total"]
+
+        # Get segments from the model cache
+        segments = self._model.get_segments_for(self._download_id)
+
+        self._update_ui(self._dl, segments)
+
+    def _on_status_changed(self, dl_id: str, status: str) -> None:
+        """Handle a WebSocket status change event (paused/resumed/completed/failed)."""
+        if dl_id != self._download_id or self._dl is None:
+            return
+
+        self._dl.status = status
+        segments = self._model.get_segments_for(self._download_id)
+        self._update_ui(self._dl, segments)
 
     def _update_ui(self, dl, segments: list[Segment]) -> None:
         self._file_path = os.path.join(dl.dir, dl.filename)

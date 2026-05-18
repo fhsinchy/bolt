@@ -10,6 +10,7 @@ from queue import Empty, Queue
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from .types import Config, Download, ProbeResult, Segment, Stats
+from .websocket_client import WebSocketWorker
 
 
 def _socket_path() -> str:
@@ -126,10 +127,14 @@ class DaemonClient(QObject):
     stats_fetched = Signal(object)
     download_detail_fetched = Signal(object, list)
     request_failed = Signal(str, int, str, str)  # endpoint, status, code, message
+    download_progress = Signal(str, dict)  # dl_id, progress_event_data
+    download_status_changed = Signal(str, str)  # dl_id, new_status
+    ws_state_changed = Signal()  # emitted after any WebSocket event updates the model
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self._connected = False
+        self._ws_active = False
         self._poll_in_flight = False
         self._socket_path = _socket_path()
 
@@ -137,6 +142,12 @@ class DaemonClient(QObject):
         self._worker.response_ready.connect(self._handle_response)
         self._worker.connection_changed.connect(self._on_connection_changed)
         self._worker.start()
+
+        self._ws_worker = WebSocketWorker(self._socket_path)
+        self._ws_worker.connected.connect(self._on_ws_connected)
+        self._ws_worker.disconnected.connect(self._on_ws_disconnected)
+        self._ws_worker.event_received.connect(self._handle_ws_event)
+        self._ws_worker.start()
 
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(1000)
@@ -156,6 +167,8 @@ class DaemonClient(QObject):
     def shutdown(self) -> None:
         self._poll_timer.stop()
         self._reconnect_timer.stop()
+        self._ws_worker.stop()
+        self._ws_worker.wait(3000)
         self._worker.request_stop()
         self._worker.wait(3000)
 
@@ -168,7 +181,9 @@ class DaemonClient(QObject):
         if is_connected and not self._connected:
             self._connected = True
             self._reconnect_timer.stop()
-            self._poll_timer.start()
+            # Start polling only if WebSocket is not active
+            if not self._ws_active:
+                self._poll_timer.start()
             self.connected.emit()
         elif not is_connected and self._connected:
             self._connected = False
@@ -182,6 +197,77 @@ class DaemonClient(QObject):
             if not self._reconnect_timer.isActive():
                 self._reconnect_timer.start()
             self.disconnected.emit()
+
+    # --- WebSocket handlers ---
+
+    def _on_ws_connected(self) -> None:
+        """WebSocket connection established.
+
+        Stop polling, fetch the full download list once for initial state,
+        then rely on WebSocket events for ongoing updates.
+        """
+        self._ws_active = True
+        self._poll_timer.stop()
+        if not self._connected:
+            self._connected = True
+            self._reconnect_timer.stop()
+            self.connected.emit()
+        # Fetch initial state snapshot
+        self.fetch_downloads()
+
+    def _on_ws_disconnected(self) -> None:
+        """WebSocket connection lost.
+
+        Fall back to REST polling until the WebSocket reconnects.
+        """
+        self._ws_active = False
+        # Fall back to polling if HTTP worker is connected
+        if self._connected:
+            self._poll_timer.start()
+
+    def set_model(self, model) -> None:
+        """Set the DownloadListModel for in-place WebSocket event updates."""
+        self._model = model
+
+    def _handle_ws_event(self, event: dict) -> None:
+        """Route a WebSocket event to the appropriate model method.
+
+        All events update the model in-place — no REST re-fetch is needed
+        because the enriched event payloads carry all required fields.
+        """
+        if not hasattr(self, '_model') or self._model is None:
+            return
+
+        etype = event.get("type", "")
+        data = event.get("data", {})
+        dl_id = data.get("id", "")
+
+        if etype == "progress":
+            self._model.apply_progress(dl_id, data)
+            self.download_progress.emit(dl_id, data)
+            self.ws_state_changed.emit()
+        elif etype == "completed":
+            self._model.apply_completed(dl_id, data)
+            self.download_status_changed.emit(dl_id, "completed")
+            self.ws_state_changed.emit()
+        elif etype == "failed":
+            self._model.apply_failed(dl_id, data)
+            self.download_status_changed.emit(dl_id, "error")
+            self.ws_state_changed.emit()
+        elif etype == "paused":
+            self._model.apply_status(dl_id, "paused")
+            self.download_status_changed.emit(dl_id, "paused")
+            self.ws_state_changed.emit()
+        elif etype == "resumed":
+            self._model.apply_status(dl_id, "active")
+            self.download_status_changed.emit(dl_id, "active")
+            self.ws_state_changed.emit()
+        elif etype == "added":
+            self._model.insert_download(data)
+            self.ws_state_changed.emit()
+        elif etype == "removed":
+            self._model.remove_download(dl_id)
+            self.ws_state_changed.emit()
 
     # --- Response handling ---
 
@@ -224,7 +310,8 @@ class DaemonClient(QObject):
         elif tag == "addDownload":
             dl = Download.from_json(obj.get("download", {}))
             self.download_added.emit(dl)
-            self.fetch_downloads()
+            if not self._ws_active:
+                self.fetch_downloads()
         elif tag == "probe":
             result = ProbeResult.from_json(obj)
             self.probe_completed.emit(result)
@@ -241,13 +328,13 @@ class DaemonClient(QObject):
             segments = [Segment.from_json(s) for s in obj.get("segments") or []]
             self.download_detail_fetched.emit(dl, segments)
         elif tag in ("pause", "resume", "retry", "delete", "pauseAll", "resumeAll", "reorder"):
-            if not self._poll_in_flight:
+            if not self._ws_active and not self._poll_in_flight:
                 self.fetch_downloads()
 
     # --- Polling ---
 
     def _poll(self) -> None:
-        if self._poll_in_flight:
+        if self._ws_active or self._poll_in_flight:
             return
         self._poll_in_flight = True
         self._worker.enqueue(_RequestItem("GET", "/api/downloads", b"", "poll"))
