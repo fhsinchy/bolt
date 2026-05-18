@@ -59,12 +59,27 @@ func extractTraceID(data *json.RawMessage) string {
 	return t.TraceID
 }
 
+// extractID extracts the id field from raw JSON data.
+// Returns empty string if data is nil or id is not present.
+func extractID(data *json.RawMessage) string {
+	if data == nil {
+		return ""
+	}
+	var t struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(*data, &t)
+	return t.ID
+}
+
 func commandRoute(cmd string) (string, string) {
 	switch cmd {
 	case "ping":
 		return "GET", "/api/stats"
 	case "add_download":
 		return "POST", "/api/downloads"
+	case "promote_download":
+		return "POST", "/api/downloads/promote"
 	case "probe":
 		return "POST", "/api/probe"
 	default:
@@ -80,6 +95,8 @@ func (r *relay) execute(cmd command) (response, int, error) {
 		return r.doRequest(cmd, http.MethodGet, "/api/stats", nil)
 	case "add_download":
 		return r.doRequest(cmd, http.MethodPost, "/api/downloads", cmd.Data)
+	case "promote_download":
+		return r.doRequest(cmd, http.MethodPost, "/api/downloads/"+extractID(cmd.Data)+"/promote", nil)
 	case "probe":
 		return r.doRequest(cmd, http.MethodPost, "/api/probe", cmd.Data)
 	default:

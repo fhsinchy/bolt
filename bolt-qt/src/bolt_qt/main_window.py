@@ -113,6 +113,10 @@ class MainWindow(QMainWindow):
         # Selection changes
         self._table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
+        # Right-click context menu
+        self._table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._table_view.customContextMenuRequested.connect(self._on_context_menu)
+
         # Double-click to open detail dialog
         self._table_view.doubleClicked.connect(self._on_double_click)
 
@@ -364,6 +368,53 @@ class MainWindow(QMainWindow):
             self._empty_label.setGeometry(self._table_view.viewport().rect())
 
     # ------------------------------------------------------------------
+    # Context menu (right-click)
+    # ------------------------------------------------------------------
+
+    def _on_context_menu(self, pos) -> None:
+        proxy_idx = self._table_view.indexAt(pos)
+        if not proxy_idx.isValid():
+            return
+
+        if not self._client.is_connected():
+            return
+
+        src_idx = self._proxy_model.mapToSource(proxy_idx)
+        dl = self._model.download_at(src_idx.row())
+        if dl is None:
+            return
+
+        menu = QMenu(self)
+
+        if dl.status == "active":
+            pause_action = menu.addAction("Pause")
+            pause_action.triggered.connect(lambda: self._client.pause_download(dl.id))
+        elif dl.status == "paused":
+            resume_action = menu.addAction("Resume")
+            resume_action.triggered.connect(lambda: self._client.resume_download(dl.id))
+        elif dl.status == "error":
+            retry_action = menu.addAction("Retry")
+            retry_action.triggered.connect(lambda: self._client.retry_download(dl.id))
+
+        if dl.status == "queued":
+            promote_action = menu.addAction("Download Next")
+            promote_action.triggered.connect(lambda: self._client.promote_download(dl.id))
+            menu.addSeparator()
+
+        # Detail action
+        if dl.status != "queued":
+            menu.addSeparator()
+        detail_action = menu.addAction("Show Details")
+        detail_action.triggered.connect(lambda: self._on_double_click(proxy_idx))
+
+        menu.addSeparator()
+
+        delete_action = menu.addAction("Delete")
+        delete_action.triggered.connect(lambda: self._on_delete_selected([dl.id]))
+
+        menu.exec(self._table_view.viewport().mapToGlobal(pos))
+
+    # ------------------------------------------------------------------
     # Double-click
     # ------------------------------------------------------------------
 
@@ -431,6 +482,12 @@ class MainWindow(QMainWindow):
         proxy_selected = self._table_view.selectionModel().selectedRows()
         source_selected = [self._proxy_model.mapToSource(idx) for idx in proxy_selected]
         ids = self._model.selected_ids(source_selected)
+        if not ids:
+            return
+
+        self._on_delete_selected(ids)
+
+    def _on_delete_selected(self, ids: list[str]) -> None:
         if not ids:
             return
 

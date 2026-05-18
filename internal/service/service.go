@@ -198,6 +198,12 @@ func (s *Service) ReorderDownloads(ctx context.Context, orderedIDs []string) err
 	return s.store.ReorderDownloads(ctx, orderedIDs)
 }
 
+// PromoteDownload moves a queued download to the front of the queue so it
+// is the next one picked up when a download slot opens.
+func (s *Service) PromoteDownload(ctx context.Context, id string) error {
+	return s.store.PromoteDownload(ctx, id)
+}
+
 // --- Client Hub ---
 
 func (s *Service) RegisterClient() (int, <-chan []byte) {

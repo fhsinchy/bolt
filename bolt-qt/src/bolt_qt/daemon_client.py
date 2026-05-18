@@ -327,9 +327,12 @@ class DaemonClient(QObject):
             dl = Download.from_json(obj.get("download", {}))
             segments = [Segment.from_json(s) for s in obj.get("segments") or []]
             self.download_detail_fetched.emit(dl, segments)
-        elif tag in ("pause", "resume", "retry", "delete", "pauseAll", "resumeAll", "reorder"):
+        elif tag in ("pause", "resume", "retry", "delete", "pauseAll", "resumeAll", "promote"):
             if not self._ws_active and not self._poll_in_flight:
                 self.fetch_downloads()
+        elif tag == "reorder":
+            # Always re-fetch after reorder — no WebSocket event exists for it
+            self.fetch_downloads()
 
     # --- Polling ---
 
@@ -368,6 +371,10 @@ class DaemonClient(QObject):
 
     def resume_all(self) -> None:
         self._worker.enqueue(_RequestItem("POST", "/api/downloads/resume-all", b"", "resumeAll"))
+
+    def promote_download(self, dl_id: str) -> None:
+        """Promote a queued download to the front of the queue (download next)."""
+        self._worker.enqueue(_RequestItem("POST", f"/api/downloads/{dl_id}/promote", b"", "promote"))
 
     def reorder_downloads(self, ordered_ids: list[str]) -> None:
         body = json.dumps({"ordered_ids": ordered_ids}).encode()

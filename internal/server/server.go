@@ -42,6 +42,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/downloads/{id}/resume", s.handleResumeDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/retry", s.handleRetryDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/refresh", s.handleRefreshURL)
+	mux.HandleFunc("POST /api/downloads/{id}/promote", s.handlePromoteDownload)
 	mux.HandleFunc("POST /api/downloads/{id}/set-refresh", s.handleSetRefresh)
 	mux.HandleFunc("POST /api/downloads/{id}/checksum", s.handleUpdateChecksum)
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)

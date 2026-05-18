@@ -131,7 +131,9 @@ func (s *Store) ListDownloads(ctx context.Context, status string, limit, offset 
 		args = append(args, status)
 	}
 
-	query.WriteString(" ORDER BY queue_order ASC, created_at DESC")
+	// Order non-terminal downloads before terminal (completed / error).
+	// Within each group, sort by queue_order then creation time.
+	query.WriteString(" ORDER BY CASE WHEN status IN ('completed', 'error') THEN 1 ELSE 0 END, queue_order ASC, created_at DESC")
 
 	if limit > 0 {
 		query.WriteString(" LIMIT ?")
@@ -163,10 +165,20 @@ func (s *Store) ListDownloads(ctx context.Context, status string, limit, offset 
 }
 
 // UpdateDownloadStatus updates the status and error message of a download.
+// When transitioning to 'error', also sets queue_order = -1 to release
+// the queue position.
 func (s *Store) UpdateDownloadStatus(ctx context.Context, id string, status model.Status, errMsg string) error {
-	result, err := s.db.ExecContext(ctx,
-		`UPDATE downloads SET status = ?, error = ? WHERE id = ?`,
-		string(status), errMsg, id)
+	var result sql.Result
+	var err error
+	if status == model.StatusError {
+		result, err = s.db.ExecContext(ctx,
+			`UPDATE downloads SET status = ?, error = ?, queue_order = -1 WHERE id = ?`,
+			string(status), errMsg, id)
+	} else {
+		result, err = s.db.ExecContext(ctx,
+			`UPDATE downloads SET status = ?, error = ? WHERE id = ?`,
+			string(status), errMsg, id)
+	}
 	if err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
@@ -201,9 +213,10 @@ func (s *Store) UpdateDownloadProgress(ctx context.Context, id string, downloade
 }
 
 // SetCompleted marks a download as completed with the current timestamp.
+// Also sets queue_order = -1 to release the queue position.
 func (s *Store) SetCompleted(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE downloads SET status = ?, completed_at = datetime('now') WHERE id = ?`,
+		`UPDATE downloads SET status = ?, completed_at = datetime('now'), queue_order = -1 WHERE id = ?`,
 		string(model.StatusCompleted), id)
 	if err != nil {
 		return fmt.Errorf("set completed: %w", err)
@@ -303,10 +316,18 @@ func (s *Store) CountAll(ctx context.Context) (int, error) {
 }
 
 // NextQueueOrder returns the next available queue_order value.
+// Only non-terminal downloads (queued, active, paused, verifying) are
+// considered so that completed and error downloads don't inflate the
+// queue position for new items.
 func (s *Store) NextQueueOrder(ctx context.Context) (int, error) {
 	var order int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(queue_order), 0) + 1 FROM downloads`).Scan(&order)
+		`SELECT COALESCE(MAX(queue_order), 0) + 1 FROM downloads
+		 WHERE status IN (?, ?, ?, ?)`,
+		string(model.StatusQueued),
+		string(model.StatusActive),
+		string(model.StatusPaused),
+		string(model.StatusVerifying)).Scan(&order)
 	if err != nil {
 		return 0, fmt.Errorf("next queue order: %w", err)
 	}
@@ -315,12 +336,83 @@ func (s *Store) NextQueueOrder(ctx context.Context) (int, error) {
 
 // ReorderDownloads updates the queue_order for the given download IDs.
 // The order of the IDs determines the new queue_order values (0-indexed).
+//
+// To avoid queue_order collisions with non-reordered non-terminal
+// downloads (active, paused, verifying), the function first computes a
+// base offset from the highest queue_order among downloads NOT in the
+// ordered set but still in a non-terminal status.  Queued downloads that
+// are not in orderedIDs are shifted above the reordered block so they
+// appear after the manually ordered items.
 func (s *Store) ReorderDownloads(ctx context.Context, orderedIDs []string) error {
+	if len(orderedIDs) == 0 {
+		return nil
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Build set of ordered IDs for quick lookup.
+	orderedSet := make(map[string]bool, len(orderedIDs))
+	for _, id := range orderedIDs {
+		orderedSet[id] = true
+	}
+
+	// Find the highest queue_order among non-terminal downloads that
+	// are NOT in the ordered set.  The reordered block starts after
+	// these so it doesn't collide.
+	placeholders := make([]string, 0, len(orderedIDs))
+	queryArgs := []any{
+		string(model.StatusActive),
+		string(model.StatusPaused),
+		string(model.StatusVerifying),
+	}
+	for _, id := range orderedIDs {
+		placeholders = append(placeholders, "?")
+		queryArgs = append(queryArgs, id)
+	}
+
+	var base int
+	query := fmt.Sprintf(
+		`SELECT COALESCE(MAX(queue_order), -1) FROM downloads
+		 WHERE status IN (?, ?, ?) AND id NOT IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	if err := tx.QueryRowContext(ctx, query, queryArgs...).Scan(&base); err != nil {
+		return fmt.Errorf("compute reorder base: %w", err)
+	}
+	base++ // start after the highest non-reordered non-terminal item
+
+	// Also find queued downloads not in the ordered set so we can bump
+	// them above the reordered block.
+	queuedPlaceholders := make([]string, len(orderedIDs))
+	queuedArgs := []any{string(model.StatusQueued)}
+	for i, id := range orderedIDs {
+		queuedPlaceholders[i] = "?"
+		queuedArgs = append(queuedArgs, id)
+	}
+	queuedQuery := fmt.Sprintf(
+		`SELECT id FROM downloads
+		 WHERE status = ? AND id NOT IN (%s)
+		 ORDER BY queue_order ASC`,
+		strings.Join(queuedPlaceholders, ","),
+	)
+	rows, err := tx.QueryContext(ctx, queuedQuery, queuedArgs...)
+	if err != nil {
+		return fmt.Errorf("query non-reordered queued: %w", err)
+	}
+	var otherQueued []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan queued id: %w", err)
+		}
+		otherQueued = append(otherQueued, id)
+	}
+	rows.Close()
 
 	stmt, err := tx.PrepareContext(ctx, `UPDATE downloads SET queue_order = ? WHERE id = ?`)
 	if err != nil {
@@ -328,9 +420,100 @@ func (s *Store) ReorderDownloads(ctx context.Context, orderedIDs []string) error
 	}
 	defer stmt.Close()
 
+	// Assign the user-ordered items starting from base.
 	for i, id := range orderedIDs {
-		if _, err := stmt.ExecContext(ctx, i, id); err != nil {
+		if _, err := stmt.ExecContext(ctx, base+i, id); err != nil {
 			return fmt.Errorf("reorder download %s: %w", id, err)
+		}
+	}
+
+	// Bump remaining queued downloads above the reordered block so they
+	// appear after it in the queue.
+	for i, id := range otherQueued {
+		if _, err := stmt.ExecContext(ctx, base+len(orderedIDs)+i, id); err != nil {
+			return fmt.Errorf("reorder remaining queued %s: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// PromoteDownload moves a queued download to the front of the non-terminal
+// queue so it will be the next queued item picked up.  The download keeps
+// its queue_order just above any currently active downloads and all other
+// queued items are shifted down by one.  Returns an error if the download
+// is not in queued status.
+func (s *Store) PromoteDownload(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Verify the download is queued.
+	var status string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT status FROM downloads WHERE id = ?`, id,
+	).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return model.ErrNotFound
+		}
+		return fmt.Errorf("lookup download: %w", err)
+	}
+	if model.Status(status) != model.StatusQueued {
+		return fmt.Errorf("only queued downloads can be promoted, got %s", status)
+	}
+
+	// Find the highest queue_order among active downloads.  The promoted
+	// item goes right after them (or at 0 if none are active).
+	var base int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(queue_order), -1) FROM downloads
+		 WHERE status = ?`,
+		string(model.StatusActive),
+	).Scan(&base); err != nil {
+		return fmt.Errorf("find active base: %w", err)
+	}
+	base++
+
+	// Get all other queued downloads (excluding the one being promoted),
+	// ordered by their current queue_order.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id FROM downloads
+		 WHERE status = ? AND id != ?
+		 ORDER BY queue_order ASC`,
+		string(model.StatusQueued), id,
+	)
+	if err != nil {
+		return fmt.Errorf("query other queued: %w", err)
+	}
+	var otherQueued []string
+	for rows.Next() {
+		var otherID string
+		if err := rows.Scan(&otherID); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan queued id: %w", err)
+		}
+		otherQueued = append(otherQueued, otherID)
+	}
+	rows.Close()
+
+	stmt, err := tx.PrepareContext(ctx,
+		`UPDATE downloads SET queue_order = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare update: %w", err)
+	}
+	defer stmt.Close()
+
+	// Promoted download gets the slot right after active downloads.
+	if _, err := stmt.ExecContext(ctx, base, id); err != nil {
+		return fmt.Errorf("promote download: %w", err)
+	}
+
+	// Shift remaining queued downloads down.
+	for i, otherID := range otherQueued {
+		if _, err := stmt.ExecContext(ctx, base+1+i, otherID); err != nil {
+			return fmt.Errorf("shift queued %s: %w", otherID, err)
 		}
 	}
 

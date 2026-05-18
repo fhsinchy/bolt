@@ -126,6 +126,19 @@ func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handlePromoteDownload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	if err := s.svc.PromoteDownload(r.Context(), id); err != nil {
+		mapEngineError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "promoted",
+	})
+}
+
 func (s *Server) handleRefreshURL(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
